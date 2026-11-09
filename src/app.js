@@ -55,6 +55,7 @@ import {
   isolateOnSignOut,
   bootPrefersScopedCache,
 } from './cloud/sessionScope.js';
+import { needsCloudAuthGate, parseSignupHouseholdName } from './cloud/onboarding.js';
 import { uid } from './lib/id.js';
 
 export function createApp(root) {
@@ -99,7 +100,7 @@ export function createApp(root) {
   let unbindNetwork = () => {};
   let syncPushTimer = null;
   let applyingRemote = false;
-  /** @type {{ busy: boolean, user: object|null, households: object[], members: object[], inviteCode: string, message: string, migrationPlan: object|null, migrationText: string }} */
+  /** @type {{ busy: boolean, user: object|null, households: object[], members: object[], inviteCode: string, message: string, migrationPlan: object|null, migrationText: string, deferAuth: boolean }} */
   let cloudUi = {
     busy: false,
     user: null,
@@ -108,6 +109,7 @@ export function createApp(root) {
     inviteCode: '',
     migrationPlan: null,
     migrationText: '',
+    deferAuth: false,
     message: cloudCfg.configured
       ? '공용 관리자 계정으로 로그인하면 Mac·iPhone·iPad에서 같은 집 데이터를 쓸 수 있어요.'
       : '클라우드 미설정 — 로컬만 사용 중이에요.',
@@ -290,6 +292,11 @@ export function createApp(root) {
 
   function render() {
     const view = state.settings.view || 'home';
+    const authGate = needsCloudAuthGate({
+      configured: cloudCfg.configured,
+      user: cloudUi.user,
+      deferAuth: cloudUi.deferAuth,
+    });
     const syncUi = syncRuntime.getUi();
     const badge = isCloudPrimary()
       ? `<span class="sync-badge sync-${esc(syncUi.status)}" title="${esc(syncUi.message)}">${esc(syncBadgeLabel(syncUi))}</span>`
@@ -305,7 +312,7 @@ export function createApp(root) {
         <header class="top">
           <div>
             <p class="eyebrow">Family Flow</p>
-            <h1>${viewTitle(view)}</h1>
+            <h1>${authGate ? '우리 집 시작하기' : viewTitle(view)}</h1>
           </div>
           <div class="top-meta">
             <p class="household">${esc(state.household.name)}</p>
@@ -315,27 +322,47 @@ export function createApp(root) {
         <main class="main">
           ${pendingApproval ? approvalPanel(pendingApproval) : ''}
           ${
-            view === 'home'
-              ? homeView()
-              : view === 'shopping'
-                ? shoppingView()
-                : view === 'inventory'
-                  ? inventoryView()
-                  : view === 'meals'
-                    ? mealsView()
-                    : moreView()
+            authGate
+              ? authGateView()
+              : view === 'home'
+                ? homeView()
+                : view === 'shopping'
+                  ? shoppingView()
+                  : view === 'inventory'
+                    ? inventoryView()
+                    : view === 'meals'
+                      ? mealsView()
+                      : moreView()
           }
         </main>
         ${toast ? `<div class="toast" role="status">${esc(toast)}</div>` : ''}
-        <nav class="tabbar" aria-label="주요 메뉴">
+        ${
+          authGate
+            ? ''
+            : `<nav class="tabbar" aria-label="주요 메뉴">
           ${tab('home', '홈')}
           ${tab('shopping', '장보기')}
           ${tab('inventory', '재고')}
           ${tab('meals', '식단')}
           ${tab('more', '더보기')}
-        </nav>
+        </nav>`
+        }
       </div>`;
     bind();
+  }
+
+  function authGateView() {
+    return `
+      <section class="hero-assist">
+        <p class="lede">처음이라면 공용 관리자 계정으로 시작해 주세요.</p>
+        <h2>로그인 또는 집 만들기</h2>
+        <p class="hint">더보기로 찾아가지 않아도 됩니다. 계정 하나만 만들면 Mac·iPhone·iPad에서 같은 집을 씁니다.</p>
+      </section>
+      ${cloudPanel()}
+      <section class="panel muted">
+        <button type="button" class="ghost block" data-act="defer-cloud-auth">로컬로만 먼저 둘러볼게요</button>
+        <p class="hint">나중에 더보기 → 우리 집 클라우드에서 언제든 로그인할 수 있어요.</p>
+      </section>`;
   }
 
   function tab(id, label) {
@@ -798,7 +825,8 @@ export function createApp(root) {
         <form data-form="cloud-auth" class="cloud-auth">
           <label>공용 이메일<input name="email" type="email" required autocomplete="username" /></label>
           <label>비밀번호<input name="password" type="password" required minlength="6" autocomplete="current-password" /></label>
-          <label>집 표시 이름 (처음 만들 때)<input name="displayName" maxlength="40" placeholder="우리집" /></label>
+          <label>집 이름 (계정 만들 때)<input name="householdName" maxlength="80" placeholder="우리집" autocomplete="organization" /></label>
+          <p class="hint">「공용 계정 만들기」를 누르면 위 집 이름으로 가구가 바로 생깁니다. 로그인만 할 때는 비워도 됩니다.</p>
           <div class="row-actions wrap">
             <button type="submit" class="primary" data-auth="signin" ${cloudUi.busy ? 'disabled' : ''}>로그인</button>
             <button type="submit" class="secondary" data-auth="signup" ${cloudUi.busy ? 'disabled' : ''}>공용 계정 만들기</button>
@@ -1278,6 +1306,14 @@ export function createApp(root) {
       };
     });
 
+    root.querySelectorAll('[data-act=defer-cloud-auth]').forEach((el) => {
+      el.onclick = () => {
+        cloudUi.deferAuth = true;
+        cloudUi.message = '로컬로 둘러보는 중이에요. 준비되면 더보기에서 로그인하세요.';
+        render();
+      };
+    });
+
     const cloudAuth = root.querySelector('[data-form=cloud-auth]');
     if (cloudAuth) {
       cloudAuth.onsubmit = async (e) => {
@@ -1289,13 +1325,37 @@ export function createApp(root) {
         render();
         try {
           if (mode === 'signup') {
-            await signUpWithEmail(fd.email, fd.password, { displayName: fd.displayName });
-            cloudUi.message = '공용 계정을 만들었어요. 바로 로그인된 상태면 아래에서 우리 집을 만들면 됩니다.';
+            const parsed = parseSignupHouseholdName(fd.householdName);
+            if (!parsed.ok) throw new Error(parsed.error);
+            await signUpWithEmail(fd.email, fd.password, {
+              displayName: parsed.profileDisplayName,
+            });
+            await refreshCloudSession();
+            if (!cloudUi.user) {
+              cloudUi.message =
+                '계정을 만들었어요. 이메일 확인이 필요하면 확인 후 로그인해 주세요. 집 이름은 로그인 뒤 한 번만 더 만들면 됩니다.';
+            } else if (cloudUi.households.length) {
+              cloudUi.deferAuth = false;
+              cloudUi.message = '공용 계정을 만들었어요. 이미 연결된 집이 있어 그 집을 쓸 수 있어요.';
+            } else {
+              const hid = await createHousehold(parsed.householdName);
+              ensureDeviceLocalBackup(state);
+              commit((s) => {
+                s.cloud.householdId = hid;
+                s.cloud.mode = 'local';
+                s.cloud.migratedAt = null;
+                s.household.name = parsed.householdName;
+              });
+              cloudUi.deferAuth = false;
+              cloudUi.message = `공용 계정과 「${parsed.householdName}」 집을 만들었어요. 「이전 미리보기」로 확인한 뒤 클라우드를 기본 저장소로 쓰면 됩니다.`;
+              await refreshCloudSession();
+            }
           } else {
             await signInWithEmail(fd.email, fd.password);
+            cloudUi.deferAuth = false;
             cloudUi.message = '로그인했어요.';
+            await refreshCloudSession();
           }
-          await refreshCloudSession();
         } catch (err) {
           cloudUi.message = err.message || '인증에 실패했어요.';
         } finally {
