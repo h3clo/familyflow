@@ -5,11 +5,13 @@
 
 ## 현재 시작점 (2026-11-10 Asia/Seoul)
 
-**방금 완료:** PR #1 `main` 병합 (`b2752e1`). Pages Source=workflow 확인. `.env.production`에 publishable 공개 설정만 커밋해 Pages 빌드 가능.  
-- 배포 URL: `https://h3clo.github.io/familyflow/`  
-- **남은 수동 1건:** Supabase Auth Site/Redirect URL (브라우저 세션 없음 → 대시보드 로그인 필요)
+**방금 완료:** PR #1·#2 merge commit 병합. GitHub Pages **첫 배포 성공**.  
+- `main` tip: 최신 merge (`af9f4ee` 계열)  
+- 배포 URL: https://h3clo.github.io/familyflow/  
+- Vite base `/familyflow/`, `.env.production` publishable만, RLS ON 확인  
+- **남은 수동 1건:** Supabase Auth Site URL / Redirect URLs를 Pages 주소에 맞추기 (에이전트 브라우저에 대시보드 로그인 세션 없음)
 
-**다음 행동 (한 가지):** Auth URL을 Pages 주소에 맞춘 뒤 실URL에서 로그인·동기화 스모크. UX/UI 재설계는 별도 승인 전 금지.
+**다음 행동 (한 가지):** Auth URL 설정 후 Pages에서 로그인·클라우드 동기화 스모크. UX/UI 재설계는 별도 승인 전 금지.
 
 브랜치 참고: Cloud Agent 작업 기준 **`main`**.
 
@@ -63,7 +65,7 @@
 1. ~~운영 문서 최소 세트~~ → **완료**
 2. ~~피처 브랜치 tip 원격 보존~~ → **완료**
 3. ~~main 이력 통합 PR #1 merge~~ → **완료** (`b2752e1`)
-4. GitHub Pages 첫 배포 — **배포 진행/검증** (Auth URL만 수동 남을 수 있음)
+4. ~~GitHub Pages 첫 배포~~ → **완료** (Auth URL 수동 설정만 남음)
 5. UX 방향 사용자 승인 대기 (UI 코드 금지 유지)
 
 ### P1 (승인 후)
