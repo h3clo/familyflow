@@ -596,64 +596,66 @@ export function createApp(root) {
     const activeHid = state.cloud?.householdId;
     if (!cloudUi.user) {
       return `<section class="panel cloud-panel">
-        <h2>가족 클라우드</h2>
+        <h2>우리 집 클라우드</h2>
+        <p class="hint">엄마·아빠가 각각 가입할 필요 없어요. <strong>가족 공용 계정 하나</strong>만 만들면 됩니다.</p>
         <p class="hint">${esc(cloudUi.message)}</p>
         <form data-form="cloud-auth" class="cloud-auth">
-          <label>이메일<input name="email" type="email" required autocomplete="username" /></label>
+          <label>공용 이메일<input name="email" type="email" required autocomplete="username" /></label>
           <label>비밀번호<input name="password" type="password" required minlength="6" autocomplete="current-password" /></label>
-          <label>표시 이름 (가입 시)<input name="displayName" maxlength="40" placeholder="나" /></label>
+          <label>집 표시 이름 (처음 만들 때)<input name="displayName" maxlength="40" placeholder="우리집" /></label>
           <div class="row-actions wrap">
             <button type="submit" class="primary" data-auth="signin" ${cloudUi.busy ? 'disabled' : ''}>로그인</button>
-            <button type="submit" class="secondary" data-auth="signup" ${cloudUi.busy ? 'disabled' : ''}>회원가입</button>
+            <button type="submit" class="secondary" data-auth="signup" ${cloudUi.busy ? 'disabled' : ''}>공용 계정 만들기</button>
           </div>
         </form>
       </section>`;
     }
 
     return `<section class="panel cloud-panel">
-      <h2>가족 클라우드</h2>
-      <p class="hint">로그인: ${esc(cloudUi.user.email || cloudUi.user.id)} · 활성 가구: ${esc(activeHid || '없음')}</p>
+      <h2>우리 집 클라우드</h2>
+      <p class="hint">공용 계정: ${esc(cloudUi.user.email || cloudUi.user.id)} · 연결된 집: ${esc(activeHid || '없음')}</p>
       <p class="hint">${esc(cloudUi.message)}</p>
       <div class="row-actions wrap">
         <button type="button" class="ghost" data-act="cloud-refresh" ${cloudUi.busy ? 'disabled' : ''}>새로고침</button>
         <button type="button" class="ghost" data-act="cloud-signout" ${cloudUi.busy ? 'disabled' : ''}>로그아웃</button>
       </div>
-      <form data-form="cloud-create-hh" class="cloud-auth">
-        <label>새 가구 이름<input name="name" required maxlength="80" value="${esc(state.household.name)}" /></label>
-        <label>예산<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon ?? ''}" /></label>
-        <button type="submit" class="primary" ${cloudUi.busy ? 'disabled' : ''}>가구 만들기</button>
-      </form>
       ${
         cloudUi.households.length
           ? `<ul class="chip-list">${cloudUi.households
               .map(
                 (h) =>
-                  `<li><button type="button" data-act="cloud-select-hh" data-id="${esc(h.householdId)}" class="${h.householdId === activeHid ? 'primary' : 'secondary'}">${esc(h.name)} · ${esc(h.role)}</button></li>`,
+                  `<li><button type="button" data-act="cloud-select-hh" data-id="${esc(h.householdId)}" class="${h.householdId === activeHid ? 'primary' : 'secondary'}">${esc(h.name)}</button></li>`,
               )
               .join('')}</ul>`
-          : '<p class="empty">아직 속한 가구가 없어요.</p>'
+          : `<form data-form="cloud-create-hh" class="cloud-auth">
+        <p class="hint">아직 집이 없어요. 이름만 정하면 이 공용 계정에 집이 생깁니다.</p>
+        <label>집 이름<input name="name" required maxlength="80" value="${esc(state.household.name)}" /></label>
+        <label>장보기 예산<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon ?? ''}" /></label>
+        <button type="submit" class="primary" ${cloudUi.busy ? 'disabled' : ''}>우리 집 만들기</button>
+      </form>`
       }
       ${
         activeHid
           ? `<div class="row-actions wrap">
-              <button type="button" class="secondary" data-act="cloud-invite" ${cloudUi.busy ? 'disabled' : ''}>초대 코드 만들기</button>
-              <button type="button" class="primary" data-act="cloud-push" ${cloudUi.busy ? 'disabled' : ''}>로컬 → 클라우드 복사</button>
+              <button type="button" class="primary" data-act="cloud-push" ${cloudUi.busy ? 'disabled' : ''}>이 기기 → 클라우드 복사</button>
               <button type="button" class="ghost" data-act="cloud-pull" ${cloudUi.busy ? 'disabled' : ''}>클라우드 → 이 기기</button>
             </div>
-            ${cloudUi.inviteCode ? `<p class="preview-card"><strong>초대 코드</strong> <code>${esc(cloudUi.inviteCode)}</code></p>` : ''}
-            ${
-              cloudUi.members.length
-                ? `<p class="hint">구성원: ${cloudUi.members.map((m) => esc(`${m.display_name}(${m.role})`)).join(', ')}</p>`
-                : ''
-            }`
+            <p class="hint">복사·불러오기는 이 기기 데이터를 자동 삭제하지 않아요. 엄마·아빠 사이트 비밀번호는 여기에 저장하지 않습니다.</p>
+            <details class="cloud-advanced">
+              <summary>고급 · 다른 로그인 계정 초대 (보통 안 씀)</summary>
+              <p class="hint">가족이 각자 계정을 쓰는 경우에만 필요합니다. 공용 계정 하나면 초대할 필요 없어요.</p>
+              <div class="row-actions wrap">
+                <button type="button" class="secondary" data-act="cloud-invite" ${cloudUi.busy ? 'disabled' : ''}>초대 코드 만들기</button>
+              </div>
+              ${cloudUi.inviteCode ? `<p class="preview-card"><strong>초대 코드</strong> <code>${esc(cloudUi.inviteCode)}</code></p>` : ''}
+              <form data-form="cloud-join" class="cloud-auth">
+                <label>초대 코드로 참여<input name="code" required maxlength="32" placeholder="ABCD1234" /></label>
+                <label>표시 이름<input name="displayName" maxlength="40" placeholder="나" /></label>
+                <button type="submit" class="secondary" ${cloudUi.busy ? 'disabled' : ''}>참여하기</button>
+              </form>
+            </details>`
           : ''
       }
-      <form data-form="cloud-join" class="cloud-auth">
-        <label>초대 코드로 참여<input name="code" required maxlength="32" placeholder="ABCD1234" /></label>
-        <label>내 표시 이름<input name="displayName" maxlength="40" placeholder="나" /></label>
-        <button type="submit" class="secondary" ${cloudUi.busy ? 'disabled' : ''}>참여하기</button>
-      </form>
-      <p class="hint">복사·불러오기는 로컬 브라우저 데이터를 자동 삭제하지 않아요. ActionProposal 승인과 Ollama 없이도 동작합니다.</p>
     </section>`;
   }
 
@@ -1064,7 +1066,7 @@ export function createApp(root) {
         try {
           if (mode === 'signup') {
             await signUpWithEmail(fd.email, fd.password, { displayName: fd.displayName });
-            cloudUi.message = '가입을 요청했어요. 이메일 확인이 켜져 있으면 메일함도 봐 주세요.';
+            cloudUi.message = '공용 계정을 만들었어요. 바로 로그인된 상태면 아래에서 우리 집을 만들면 됩니다.';
           } else {
             await signInWithEmail(fd.email, fd.password);
             cloudUi.message = '로그인했어요.';
@@ -1095,7 +1097,7 @@ export function createApp(root) {
             const b = Number(fd.budgetWon);
             if (Number.isFinite(b)) s.household.budgetWon = b;
           });
-          cloudUi.message = '가구를 만들었어요. 이제 초대하거나 로컬 데이터를 복사할 수 있어요.';
+          cloudUi.message = '우리 집을 만들었어요. 이제 이 기기 기록을 클라우드에 복사할 수 있어요.';
           await refreshCloudSession();
         } catch (err) {
           cloudUi.message = err.message || '가구 생성에 실패했어요.';
