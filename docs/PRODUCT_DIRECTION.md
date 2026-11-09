@@ -1,5 +1,8 @@
 # Family Flow 제품 방향 (2026-11-09)
 
+운영 상태·대기열은 [PROJECT_GUIDE.md](PROJECT_GUIDE.md), 확정 결정은 [DECISIONS.md](DECISIONS.md).  
+이 파일은 **제품 방향 설명**만 유지하고 진행 체크리스트의 최신본은 가이드를 따른다.
+
 ## 목표 경험
 
 **A형 — 먼저 챙겨주는 가족 생활 비서**를 기본으로 한다.  

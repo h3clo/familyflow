@@ -2,6 +2,8 @@
 
 확인일: 2026-11-09 (공식 문서 기준)
 
+확정 요약: [DECISIONS.md](DECISIONS.md) §4. 현재 시작점: [PROJECT_GUIDE.md](PROJECT_GUIDE.md).
+
 ## Groq 무료 모델·한도 (재확인)
 
 출처: [Rate Limits](https://console.groq.com/docs/rate-limits), [Models](https://console.groq.com/docs/models)

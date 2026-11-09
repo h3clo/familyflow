@@ -1,5 +1,7 @@
 # AI Provider · Ollama (S3–S4)
 
+페일오버·쿼터: [AI_FAILOVER.md](AI_FAILOVER.md). 결정 요약: [DECISIONS.md](DECISIONS.md) §4.
+
 ## 원칙
 
 - 규칙 엔진이 기본이다. AI가 꺼지거나 실패해도 홈·장보기·재고·식단은 그대로 동작한다.

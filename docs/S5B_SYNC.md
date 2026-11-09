@@ -1,5 +1,7 @@
 # Family Flow S5-B · 다기기 동기화
 
+계정·보안 결정 요약: [DECISIONS.md](DECISIONS.md) §2–3. 진행 상태: [PROJECT_GUIDE.md](PROJECT_GUIDE.md).
+
 ## 목표
 
 관리자 **공용 계정 하나**로 MacBook · iPhone · iPad에서 같은 장보기·재고·식단을 안전하게 사용한다.

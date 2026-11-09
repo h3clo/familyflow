@@ -3,6 +3,8 @@
 규칙 엔진과 향후 Ollama/NIM AI는 **도메인 상태를 직접 바꾸지 않고** 이 JSON만 제출한다.  
 앱은 `previewProposal` → 사용자 승인 → `applyProposal` 순으로만 저장한다.
 
+정책 요약: [DECISIONS.md](DECISIONS.md) §5.
+
 ## 객체 형태
 
 ```json

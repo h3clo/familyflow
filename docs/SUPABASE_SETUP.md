@@ -3,6 +3,8 @@
 Haze Flow 프로젝트와 **완전히 분리**된 Family Flow 전용 프로젝트를 사용합니다.
 GitHub push·공개 배포는 하지 않습니다.
 
+동기화 동작: [S5B_SYNC.md](S5B_SYNC.md). 결정: [DECISIONS.md](DECISIONS.md) §2–3. 상태: [PROJECT_GUIDE.md](PROJECT_GUIDE.md).
+
 ## 현재 상태 (에이전트가 완료)
 
 프로젝트 ref: `gocbvzsljkhnttcydpcv` (이름: family flow)
