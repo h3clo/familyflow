@@ -22,10 +22,17 @@ import {
 } from './domain/inventory.js';
 import { suggestToday, draftWeek } from './domain/meals.js';
 import { parseQuickAdd } from './domain/quick-add.js';
+import {
+  generateSuggestions,
+  applySuggestion,
+  dismissSuggestion,
+  suggestionFingerprint,
+} from './domain/suggestions.js';
 
 export function createApp(root) {
   let state = bootState();
   ensureActiveList(state);
+  if (!state.settings.view) state.settings.view = 'home';
   persist(state);
 
   let toast = '';
@@ -53,7 +60,7 @@ export function createApp(root) {
   };
 
   function render() {
-    const view = state.settings.view || 'shopping';
+    const view = state.settings.view || 'home';
     root.innerHTML = `
       <div class="shell">
         <header class="top">
@@ -64,16 +71,19 @@ export function createApp(root) {
           <p class="household">${esc(state.household.name)}</p>
         </header>
         <main class="main">${
-          view === 'shopping'
-            ? shoppingView()
-            : view === 'inventory'
-              ? inventoryView()
-              : view === 'meals'
-                ? mealsView()
-                : moreView()
+          view === 'home'
+            ? homeView()
+            : view === 'shopping'
+              ? shoppingView()
+              : view === 'inventory'
+                ? inventoryView()
+                : view === 'meals'
+                  ? mealsView()
+                  : moreView()
         }</main>
         ${toast ? `<div class="toast" role="status">${esc(toast)}</div>` : ''}
         <nav class="tabbar" aria-label="주요 메뉴">
+          ${tab('home', '홈')}
           ${tab('shopping', '장보기')}
           ${tab('inventory', '재고')}
           ${tab('meals', '식단')}
@@ -89,7 +99,87 @@ export function createApp(root) {
   }
 
   function viewTitle(view) {
-    return { shopping: '이번 장보기', inventory: '재고', meals: '식단', more: 'Family Flow' }[view];
+    return {
+      home: '오늘 챙길 일',
+      shopping: '이번 장보기',
+      inventory: '재고',
+      meals: '식단',
+      more: 'Family Flow',
+    }[view];
+  }
+
+  function homeView() {
+    const pack = generateSuggestions(state);
+    const list = ensureActiveList(state);
+    const openCount = list.items.filter((i) => !i.checked).length;
+    const lowCount = state.inventory.filter((i) => i.status === 'out' || i.status === 'low').length;
+    const dinner = state.todayDinner;
+
+    if (pack.mode === 'setup') {
+      return `
+        <section class="hero-assist">
+          <p class="lede">목록을 채우기 전에, 필요한 일을 먼저 보여 드릴게요.</p>
+          <h2>${esc(pack.setup.title)}</h2>
+          <p class="hint">임의의 재고·구매 이력을 만들지 않아요. 아는 것만 짧게 등록해 주세요.</p>
+          <ul class="setup-steps">
+            ${pack.setup.steps
+              .map(
+                (s) => `<li>
+                <button type="button" class="primary block" data-nav="${s.view}">${esc(s.label)}</button>
+                <small>${esc(s.hint)}</small>
+              </li>`,
+              )
+              .join('')}
+          </ul>
+        </section>`;
+    }
+
+    return `
+      <section class="status-strip" aria-label="요약">
+        <div><p class="label">살 것</p><p class="budget-value">${openCount}</p></div>
+        <div><p class="label">재고 주의</p><p class="budget-value">${lowCount}</p></div>
+        <div><p class="label">오늘 저녁</p><p class="budget-value">${dinner ? '확정' : '미정'}</p></div>
+      </section>
+      ${
+        dinner
+          ? `<section class="panel dinner-confirmed">
+            <h2>오늘 저녁</h2>
+            <p><strong>${esc(dinner.title)}</strong></p>
+            <small>${dinner.protein ? esc(dinner.protein) + ' · ' : ''}${dinner.sauceName ? '소스 ' + esc(dinner.sauceName) : '소스 자유'}</small>
+          </section>`
+          : ''
+      }
+      <section class="panel">
+        <h2>지금 챙길 일</h2>
+        ${
+          pack.suggestions.length
+            ? `<ul class="suggest-list">${pack.suggestions.map(suggestCard).join('')}</ul>`
+            : `<p class="empty">지금은 급한 제안이 없어요. 장보기·재고는 아래에서 바로 갈 수 있어요.</p>`
+        }
+      </section>
+      <section class="panel muted">
+        <h2>도구</h2>
+        <div class="tool-grid">
+          <button type="button" class="secondary" data-nav="shopping">장보기${openCount ? ` · ${openCount}` : ''}</button>
+          <button type="button" class="secondary" data-nav="inventory">재고</button>
+          <button type="button" class="secondary" data-nav="meals">식단</button>
+        </div>
+        <p class="hint">AI 없이 규칙으로 제안해요. 데이터는 이 기기에만 저장돼요.</p>
+      </section>`;
+  }
+
+  function suggestCard(s) {
+    const fp = suggestionFingerprint(s);
+    return `<li class="suggest-card" data-fp="${esc(fp)}">
+      <div>
+        <strong>${esc(s.title)}</strong>
+        <p>${esc(s.reason)}</p>
+      </div>
+      <div class="suggest-actions">
+        <button type="button" class="primary" data-act="accept-suggestion" data-fp="${esc(fp)}">${esc(s.actionLabel)}</button>
+        <button type="button" class="ghost" data-act="dismiss-suggestion" data-fp="${esc(fp)}">나중에</button>
+      </div>
+    </li>`;
   }
 
   function shoppingView() {
@@ -256,8 +346,14 @@ export function createApp(root) {
   function mealsView() {
     const today = suggestToday(state, state.settings.todayFlags || {});
     const plan = state.mealPlan;
+    const dinner = state.todayDinner;
     return `
       <p class="lede">매일 새 요리 대신 야채찜·구이 + 소스 변형. AI 없이 규칙으로 제안합니다.</p>
+      ${
+        dinner
+          ? `<section class="panel dinner-confirmed"><h2>홈에서 확정한 오늘 저녁</h2><p><strong>${esc(dinner.title)}</strong></p><small>${dinner.protein ? esc(dinner.protein) : ''}${dinner.sauceName ? ' · ' + esc(dinner.sauceName) : ''}</small></section>`
+          : ''
+      }
       <section class="panel">
         <h2>오늘</h2>
         <div class="meal-cards">${today.slots
@@ -336,6 +432,42 @@ export function createApp(root) {
         editingId = null;
         persist(state);
         render();
+      };
+    });
+
+    root.querySelectorAll('[data-act=accept-suggestion]').forEach((btn) => {
+      btn.onclick = () => {
+        const pack = generateSuggestions(state);
+        const suggestion = (pack.suggestions || []).find((s) => suggestionFingerprint(s) === btn.dataset.fp);
+        if (!suggestion) {
+          setToast('이미 처리됐거나 조건이 바뀌었어요.');
+          return;
+        }
+        try {
+          let msg = '반영했어요.';
+          commit((s) => {
+            const result = applySuggestion(s, suggestion);
+            if (result?.navigate) s.settings.view = result.navigate;
+            if (result?.message) msg = result.message;
+          });
+          setToast(msg);
+        } catch (err) {
+          setToast(err.message);
+        }
+      };
+    });
+
+    root.querySelectorAll('[data-act=dismiss-suggestion]').forEach((btn) => {
+      btn.onclick = () => {
+        const pack = generateSuggestions(state);
+        const suggestion = (pack.suggestions || []).find((s) => suggestionFingerprint(s) === btn.dataset.fp);
+        if (!suggestion) {
+          render();
+          return;
+        }
+        commit((s) => {
+          dismissSuggestion(s, suggestion);
+        }, '이 제안은 잠시 숨길게요.');
       };
     });
 

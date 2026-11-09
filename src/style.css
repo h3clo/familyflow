@@ -201,6 +201,73 @@ details summary { cursor: pointer; font-weight: 600; }
 .meal-card h3 { margin: 4px 0; font-size: 1.05rem; font-family: var(--display); }
 .proposal { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 
+.status-strip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+.hero-assist {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 16px;
+  box-shadow: var(--shadow);
+}
+.hero-assist h2 {
+  margin: 8px 0;
+  font-family: var(--display);
+  font-size: 1.35rem;
+}
+.setup-steps {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.setup-steps small { display: block; margin-top: 6px; color: var(--muted); }
+.suggest-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.suggest-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.suggest-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.suggest-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+.suggest-actions .primary,
+.suggest-actions .ghost {
+  min-height: 44px;
+}
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.tool-grid .secondary { width: 100%; min-height: 44px; }
+.dinner-confirmed strong { font-size: 1.05rem; }
+
 .tabbar {
   position: fixed;
   left: 50%;
@@ -208,9 +275,9 @@ details summary { cursor: pointer; font-weight: 600; }
   bottom: 0;
   width: min(720px, 100%);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 10px 8px calc(10px + env(safe-area-inset-bottom));
   background: color-mix(in srgb, var(--card) 92%, transparent);
   border-top: 1px solid var(--line);
   backdrop-filter: blur(10px);
@@ -218,11 +285,11 @@ details summary { cursor: pointer; font-weight: 600; }
 .tabbar button {
   border: 0;
   background: transparent;
-  padding: 10px 6px;
+  padding: 10px 4px;
   border-radius: 12px;
   color: var(--muted);
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
 }
 .tabbar button.on {
   background: var(--bg-accent);

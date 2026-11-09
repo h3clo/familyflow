@@ -4,25 +4,26 @@ import { seedState } from './seed.js';
 
 export function createEmptyState() {
   return {
-    version: 1,
+    version: 2,
     household: {
       id: uid(),
       name: '우리 집',
       budgetWon: 80000,
       currency: 'KRW',
     },
-    members: [
-      { id: uid(), displayName: '나', role: 'owner' },
-    ],
+    members: [{ id: uid(), displayName: '나', role: 'owner' }],
     shoppingLists: [],
     inventory: [],
     sauces: [],
     cookingPatterns: [],
     mealPlan: null,
+    todayDinner: null,
+    suggestionsMeta: { dismissed: {} },
     settings: {
       activeListId: null,
-      view: 'shopping',
+      view: 'home',
       localAi: false,
+      todayFlags: null,
     },
     meta: {
       createdAt: new Date().toISOString(),
@@ -31,9 +32,32 @@ export function createEmptyState() {
   };
 }
 
+export function migrateState(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const state = structuredClone(raw);
+  if (!state.version || state.version < 2) {
+    state.version = 2;
+    state.todayDinner = state.todayDinner || null;
+    state.suggestionsMeta = state.suggestionsMeta || { dismissed: {} };
+    if (!state.suggestionsMeta.dismissed) state.suggestionsMeta.dismissed = {};
+    if (!state.settings) state.settings = {};
+    // Prefer home as the assistant entry; keep last tool tab only if already home.
+    if (!state.settings.view || state.settings.view === 'shopping') {
+      state.settings.view = 'home';
+    }
+  }
+  return state;
+}
+
 export function bootState() {
   const existing = loadState();
-  if (existing?.version === 1) return existing;
+  if (existing) {
+    const migrated = migrateState(existing);
+    if (migrated) {
+      persist(migrated);
+      return migrated;
+    }
+  }
   const seeded = seedState(createEmptyState());
   persist(seeded);
   return seeded;
