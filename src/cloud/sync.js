@@ -1,7 +1,7 @@
 /**
- * Local ↔ cloud sync helpers.
- * Push copies local shopping/inventory/meals into the active household.
- * Never deletes localStorage automatically.
+ * Local ↔ cloud sync helpers (S5-B).
+ * Push copies local shopping/inventory/meals/family profiles into the active household.
+ * Never deletes localStorage automatically. Reconciles remote deletes to prevent zombies.
  */
 
 import { ensureActiveList } from '../domain/shopping.js';
@@ -11,6 +11,24 @@ export function assertHouseholdScope(householdId, rowHouseholdId) {
   if (!householdId || !rowHouseholdId || householdId !== rowHouseholdId) {
     throw new Error('다른 가구 데이터에는 접근할 수 없어요.');
   }
+}
+
+const ROLE_LABELS = new Set(['관리자', '엄마', '아빠', '자녀', '구성원']);
+
+export function mapMemberToProfile(member, householdId, index = 0) {
+  const role = String(member.roleLabel || member.role || '구성원');
+  let roleLabel = '구성원';
+  if (ROLE_LABELS.has(role)) roleLabel = role;
+  else if (role === 'owner') roleLabel = '관리자';
+  return {
+    id: member.id,
+    household_id: householdId,
+    display_name: String(member.displayName || member.name || '구성원').trim() || '구성원',
+    role_label: roleLabel,
+    sort_order: Number.isFinite(member.sortOrder) ? member.sortOrder : index,
+    note: String(member.note || '').slice(0, 120),
+    updated_at: member.updatedAt || new Date().toISOString(),
+  };
 }
 
 /**
@@ -82,11 +100,35 @@ export function localStateToCloudRows(state, householdId) {
       }
     : null;
 
-  return { shoppingList, shoppingItems, inventory, mealPlan, todayDinner };
+  const familyProfiles = (state.members || []).map((m, idx) => mapMemberToProfile(m, householdId, idx));
+
+  return { shoppingList, shoppingItems, inventory, mealPlan, todayDinner, familyProfiles };
 }
 
 /**
- * Upload local snapshot to cloud. Does not clear or rewrite localStorage.
+ * Ids present locally that should remain on the cloud for a household scope.
+ */
+export function reconcileDeleteIds(remoteIds, localIds) {
+  const keep = new Set(localIds);
+  return (remoteIds || []).filter((id) => id && !keep.has(id));
+}
+
+async function deleteByIds(client, table, ids) {
+  if (!ids?.length) return { deleted: 0 };
+  const chunk = 200;
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += chunk) {
+    const slice = ids.slice(i, i + chunk);
+    const { error } = await client.from(table).delete().in('id', slice);
+    if (error) throw error;
+    deleted += slice.length;
+  }
+  return { deleted };
+}
+
+/**
+ * Upload local snapshot to cloud and remove remote rows missing locally (same household).
+ * Does not clear or rewrite localStorage.
  */
 export async function pushLocalToCloud(state, householdId, client = getSupabaseClient()) {
   if (!client) throw new Error('클라우드가 설정되지 않았어요.');
@@ -111,10 +153,32 @@ export async function pushLocalToCloud(state, householdId, client = getSupabaseC
     if (error) throw error;
   }
 
+  const { data: remoteItems, error: riErr } = await client
+    .from('shopping_items')
+    .select('id')
+    .eq('household_id', householdId)
+    .eq('list_id', rows.shoppingList.id);
+  if (riErr) throw riErr;
+  const shoppingDeletes = reconcileDeleteIds(
+    (remoteItems || []).map((r) => r.id),
+    rows.shoppingItems.map((i) => i.id),
+  );
+  await deleteByIds(client, 'shopping_items', shoppingDeletes);
+
   if (rows.inventory.length) {
     const { error } = await client.from('inventory_items').upsert(rows.inventory);
     if (error) throw error;
   }
+  const { data: remoteInv, error: invListErr } = await client
+    .from('inventory_items')
+    .select('id')
+    .eq('household_id', householdId);
+  if (invListErr) throw invListErr;
+  const invDeletes = reconcileDeleteIds(
+    (remoteInv || []).map((r) => r.id),
+    rows.inventory.map((i) => i.id),
+  );
+  await deleteByIds(client, 'inventory_items', invDeletes);
 
   if (rows.mealPlan) {
     const { error } = await client.from('meal_plans').upsert(rows.mealPlan);
@@ -126,6 +190,21 @@ export async function pushLocalToCloud(state, householdId, client = getSupabaseC
     if (error) throw error;
   }
 
+  if (rows.familyProfiles.length) {
+    const { error } = await client.from('family_profiles').upsert(rows.familyProfiles);
+    if (error) throw error;
+  }
+  const { data: remoteProfiles, error: fpErr } = await client
+    .from('family_profiles')
+    .select('id')
+    .eq('household_id', householdId);
+  if (fpErr) throw fpErr;
+  const profileDeletes = reconcileDeleteIds(
+    (remoteProfiles || []).map((r) => r.id),
+    rows.familyProfiles.map((p) => p.id),
+  );
+  await deleteByIds(client, 'family_profiles', profileDeletes);
+
   return {
     ok: true,
     householdId,
@@ -134,6 +213,10 @@ export async function pushLocalToCloud(state, householdId, client = getSupabaseC
       inventory: rows.inventory.length,
       mealPlan: rows.mealPlan ? 1 : 0,
       todayDinner: rows.todayDinner ? 1 : 0,
+      familyProfiles: rows.familyProfiles.length,
+      deletedShopping: shoppingDeletes.length,
+      deletedInventory: invDeletes.length,
+      deletedProfiles: profileDeletes.length,
     },
     localPreserved: true,
   };
@@ -141,7 +224,6 @@ export async function pushLocalToCloud(state, householdId, client = getSupabaseC
 
 /**
  * Pull remote household data into a new state object (caller decides whether to persist).
- * Does not delete the previous local backup — returns merged state for explicit save.
  */
 export async function pullCloudToState(baseState, householdId, client = getSupabaseClient()) {
   if (!client) throw new Error('클라우드가 설정되지 않았어요.');
@@ -174,7 +256,6 @@ export async function pullCloudToState(baseState, householdId, client = getSupab
     .eq('household_id', householdId);
   if (iErr) throw iErr;
 
-  // Defense in depth: drop any row that somehow has another household_id
   const safeLists = (lists || []).filter((r) => r.household_id === householdId);
   const safeItems = (items || []).filter((r) => r.household_id === householdId);
 
@@ -243,6 +324,26 @@ export async function pullCloudToState(baseState, householdId, client = getSupab
     next.todayDinner = dinner.payload;
   }
 
+  const { data: profiles, error: pErr } = await client
+    .from('family_profiles')
+    .select('*')
+    .eq('household_id', householdId)
+    .order('sort_order', { ascending: true });
+  if (pErr) throw pErr;
+  if (profiles?.length) {
+    next.members = profiles
+      .filter((r) => r.household_id === householdId)
+      .map((p) => ({
+        id: p.id,
+        displayName: p.display_name,
+        roleLabel: p.role_label,
+        role: p.role_label === '관리자' ? 'owner' : 'member',
+        note: p.note || '',
+        sortOrder: p.sort_order,
+        updatedAt: p.updated_at,
+      }));
+  }
+
   next.cloud = {
     ...(next.cloud || {}),
     householdId,
@@ -250,4 +351,20 @@ export async function pullCloudToState(baseState, householdId, client = getSupab
   };
 
   return next;
+}
+
+/** Fetch cloud snapshot for migration preview without mutating caller state. */
+export async function fetchCloudSnapshot(baseState, householdId, client = getSupabaseClient()) {
+  return pullCloudToState(
+    {
+      ...structuredClone(baseState),
+      shoppingLists: [],
+      inventory: [],
+      mealPlan: null,
+      todayDinner: null,
+      members: [],
+    },
+    householdId,
+    client,
+  );
 }

@@ -4,14 +4,15 @@ import { seedState } from './seed.js';
 
 export function createEmptyState() {
   return {
-    version: 5,
+    version: 6,
     household: {
       id: uid(),
       name: '우리 집',
       budgetWon: 80000,
       currency: 'KRW',
     },
-    members: [{ id: uid(), displayName: '나', role: 'owner' }],
+    // Family people profiles (not Auth accounts). No health/finance fields.
+    members: [{ id: uid(), displayName: '나', role: 'owner', roleLabel: '관리자', note: '', sortOrder: 0 }],
     shoppingLists: [],
     inventory: [],
     sauces: [],
@@ -25,6 +26,8 @@ export function createEmptyState() {
       lastPushedAt: null,
       lastPulledAt: null,
       userId: null,
+      mode: 'local', // 'local' | 'cloud-primary'
+      migratedAt: null,
     },
     settings: {
       activeListId: null,
@@ -76,6 +79,18 @@ export function migrateState(raw) {
       userId: null,
     };
     state.version = 5;
+  }
+  if (state.version < 6) {
+    state.cloud = state.cloud || {};
+    if (!state.cloud.mode) state.cloud.mode = state.cloud.householdId ? 'cloud-primary' : 'local';
+    if (!('migratedAt' in state.cloud)) state.cloud.migratedAt = null;
+    state.members = (state.members || []).map((m, idx) => ({
+      ...m,
+      roleLabel: m.roleLabel || (m.role === 'owner' ? '관리자' : '구성원'),
+      note: m.note || '',
+      sortOrder: Number.isFinite(m.sortOrder) ? m.sortOrder : idx,
+    }));
+    state.version = 6;
   }
   return state;
 }

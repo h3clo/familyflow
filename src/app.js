@@ -43,13 +43,32 @@ import {
   acceptInvite,
   listMembers,
 } from './cloud/households.js';
-import { pushLocalToCloud, pullCloudToState } from './cloud/sync.js';
+import { pushLocalToCloud, pullCloudToState, fetchCloudSnapshot } from './cloud/sync.js';
+import { buildMigrationPlan, formatMigrationPreview } from './cloud/migratePlan.js';
+import { createSyncRuntime, syncBadgeLabel, SyncStatus } from './cloud/syncRuntime.js';
+import { getSupabaseClient } from './cloud/client.js';
+import {
+  ensureDeviceLocalBackup,
+  saveScopedState,
+  isolateOnSignOut,
+  bootPrefersScopedCache,
+} from './cloud/sessionScope.js';
+import { uid } from './lib/id.js';
 
 export function createApp(root) {
-  let state = bootState();
+  let state = bootPrefersScopedCache(bootState());
   ensureActiveList(state);
   if (!state.settings.view) state.settings.view = 'home';
-  if (!state.cloud) state.cloud = { householdId: null, lastPushedAt: null, lastPulledAt: null, userId: null };
+  if (!state.cloud) {
+    state.cloud = {
+      householdId: null,
+      lastPushedAt: null,
+      lastPulledAt: null,
+      userId: null,
+      mode: 'local',
+      migratedAt: null,
+    };
+  }
   persist(state);
 
   let toast = '';
@@ -72,17 +91,110 @@ export function createApp(root) {
     installHint: '',
   };
   const cloudCfg = readCloudConfig();
-  /** @type {{ busy: boolean, user: object|null, households: object[], members: object[], inviteCode: string, message: string }} */
+  const syncRuntime = createSyncRuntime();
+  let unbindNetwork = () => {};
+  let syncPushTimer = null;
+  let applyingRemote = false;
+  /** @type {{ busy: boolean, user: object|null, households: object[], members: object[], inviteCode: string, message: string, migrationPlan: object|null, migrationText: string }} */
   let cloudUi = {
     busy: false,
     user: null,
     households: [],
     members: [],
     inviteCode: '',
+    migrationPlan: null,
+    migrationText: '',
     message: cloudCfg.configured
-      ? '로그인하면 가족과 가구 데이터를 공유할 수 있어요.'
+      ? '공용 관리자 계정으로 로그인하면 Mac·iPhone·iPad에서 같은 집 데이터를 쓸 수 있어요.'
       : '클라우드 미설정 — 로컬만 사용 중이에요.',
   };
+
+  function isCloudPrimary() {
+    return state.cloud?.mode === 'cloud-primary' && !!state.cloud?.householdId && !!cloudUi.user;
+  }
+
+  function persistActive() {
+    if (isCloudPrimary()) {
+      saveScopedState(state.cloud.userId, state.cloud.householdId, state);
+    } else {
+      persist(state);
+    }
+  }
+
+  async function pushCloudQuiet() {
+    if (!isCloudPrimary() || applyingRemote) return;
+    if (!syncRuntime.isOnline()) {
+      syncRuntime.setStatus(SyncStatus.offline, '오프라인 — 캐시만 표시, 수정은 온라인에서');
+      render();
+      return;
+    }
+    syncRuntime.setStatus(SyncStatus.syncing, '클라우드에 저장 중…');
+    render();
+    try {
+      await pushLocalToCloud(state, state.cloud.householdId);
+      const now = new Date().toISOString();
+      state.cloud.lastPushedAt = now;
+      persistActive();
+      syncRuntime.setStatus(SyncStatus.ok, '동기화 완료', { syncedAt: now, error: null });
+    } catch (err) {
+      syncRuntime.setStatus(SyncStatus.error, err.message || '동기화 실패', { error: err.message });
+    }
+    render();
+  }
+
+  function scheduleCloudPush() {
+    if (!isCloudPrimary()) return;
+    if (syncPushTimer) clearTimeout(syncPushTimer);
+    syncPushTimer = setTimeout(() => {
+      syncPushTimer = null;
+      pushCloudQuiet();
+    }, 450);
+  }
+
+  async function pullCloudQuiet({ reason = 'pull' } = {}) {
+    if (!isCloudPrimary() || applyingRemote) return;
+    if (!syncRuntime.isOnline()) {
+      syncRuntime.setStatus(SyncStatus.offline, '오프라인 — 이 기기 캐시를 보여 줘요');
+      render();
+      return;
+    }
+    syncRuntime.setStatus(SyncStatus.syncing, reason === 'realtime' ? '다른 기기 변경 반영 중…' : '클라우드에서 불러오는 중…');
+    render();
+    try {
+      applyingRemote = true;
+      const next = await pullCloudToState(state, state.cloud.householdId);
+      next.cloud = {
+        ...next.cloud,
+        mode: 'cloud-primary',
+        userId: state.cloud.userId,
+        migratedAt: state.cloud.migratedAt,
+        lastPushedAt: state.cloud.lastPushedAt,
+      };
+      state = next;
+      ensureActiveList(state);
+      persistActive();
+      const now = new Date().toISOString();
+      syncRuntime.setStatus(SyncStatus.ok, '동기화 완료', { syncedAt: now, error: null });
+    } catch (err) {
+      syncRuntime.setStatus(SyncStatus.error, err.message || '불러오기 실패', { error: err.message });
+    } finally {
+      applyingRemote = false;
+      render();
+    }
+  }
+
+  async function startCloudListeners() {
+    await syncRuntime.unsubscribe();
+    syncRuntime.stopPolling();
+    if (!isCloudPrimary()) return;
+    const client = getSupabaseClient();
+    let debounce = null;
+    await syncRuntime.subscribeHousehold(client, state.cloud.householdId, () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => pullCloudQuiet({ reason: 'realtime' }), 600);
+    });
+    syncRuntime.startPolling(45000, () => pullCloudQuiet({ reason: 'poll' }));
+  }
 
   async function refreshCloudSession() {
     if (!cloudCfg.configured) return;
@@ -90,19 +202,37 @@ export function createApp(root) {
       const { user } = await getAuthSession();
       cloudUi.user = user;
       if (user) {
+        if (state.cloud.userId && state.cloud.userId !== user.id) {
+          // Account switch: isolate previous mirror
+          const restored = isolateOnSignOut();
+          if (restored) state = restored;
+          ensureActiveList(state);
+        }
         state.cloud.userId = user.id;
         cloudUi.households = await listMyHouseholds();
         if (state.cloud.householdId) {
           cloudUi.members = await listMembers(state.cloud.householdId);
+          if (state.cloud.mode === 'cloud-primary') {
+            await pullCloudQuiet({ reason: 'session' });
+            await startCloudListeners();
+          }
         }
       } else {
         cloudUi.households = [];
         cloudUi.members = [];
+        await syncRuntime.unsubscribe();
+        syncRuntime.stopPolling();
       }
     } catch (err) {
       cloudUi.message = err.message || '세션 확인 실패';
+      syncRuntime.setStatus(SyncStatus.error, cloudUi.message, { error: cloudUi.message });
     }
   }
+
+  unbindNetwork = syncRuntime.bindNetwork((kind) => {
+    if (kind === 'online' && isCloudPrimary()) pullCloudQuiet({ reason: 'online' });
+    render();
+  });
 
   refreshCloudSession().then(() => render());
 
@@ -127,14 +257,24 @@ export function createApp(root) {
   };
 
   const commit = (fn, message) => {
+    if (isCloudPrimary() && !syncRuntime.canWrite('cloud-primary')) {
+      setToast('오프라인에서는 읽기만 가능해요. 네트워크 연결 후 다시 수정해 주세요.');
+      syncRuntime.setStatus(SyncStatus.readonly, '오프라인 읽기 전용');
+      return;
+    }
     fn(state);
-    persist(state);
+    persistActive();
+    scheduleCloudPush();
     if (message) setToast(message);
     else render();
   };
 
   function render() {
     const view = state.settings.view || 'home';
+    const syncUi = syncRuntime.getUi();
+    const badge = isCloudPrimary()
+      ? `<span class="sync-badge sync-${esc(syncUi.status)}" title="${esc(syncUi.message)}">${esc(syncBadgeLabel(syncUi))}</span>`
+      : `<span class="sync-badge sync-idle">로컬</span>`;
     root.innerHTML = `
       <div class="shell">
         <header class="top">
@@ -142,7 +282,10 @@ export function createApp(root) {
             <p class="eyebrow">Family Flow</p>
             <h1>${viewTitle(view)}</h1>
           </div>
-          <p class="household">${esc(state.household.name)}</p>
+          <div class="top-meta">
+            <p class="household">${esc(state.household.name)}</p>
+            ${badge}
+          </div>
         </header>
         <main class="main">
           ${pendingApproval ? approvalPanel(pendingApproval) : ''}
@@ -541,11 +684,32 @@ export function createApp(root) {
 
     return `
       <section class="panel">
-        <h2>가정 (로컬)</h2>
+        <h2>우리 집</h2>
         <form data-form="household">
           <label>가정 이름<input name="name" value="${esc(state.household.name)}" maxlength="40" /></label>
           <label>기본 장보기 예산<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon}" /></label>
           <button type="submit" class="primary">저장</button>
+        </form>
+        <h3 class="subhead">가족 프로필 (로그인 계정 아님)</h3>
+        <p class="hint">엄마·아빠는 별도 가입하지 않아요. 이름만 적어 두면 됩니다. 건강·금융 정보는 저장하지 않습니다.</p>
+        <ul class="chip-list">${(state.members || [])
+          .map(
+            (m) =>
+              `<li class="member-chip">${esc(m.displayName)} · ${esc(m.roleLabel || m.role || '구성원')} <button type="button" class="ghost" data-act="remove-member" data-id="${esc(m.id)}" aria-label="삭제">×</button></li>`,
+          )
+          .join('')}</ul>
+        <form data-form="add-member" class="cloud-auth">
+          <label>이름<input name="displayName" required maxlength="40" placeholder="엄마" /></label>
+          <label>역할
+            <select name="roleLabel">
+              <option value="구성원">구성원</option>
+              <option value="엄마">엄마</option>
+              <option value="아빠">아빠</option>
+              <option value="자녀">자녀</option>
+              <option value="관리자">관리자</option>
+            </select>
+          </label>
+          <button type="submit" class="secondary">프로필 추가</button>
         </form>
       </section>
       ${cloudPanel()}
@@ -584,9 +748,10 @@ export function createApp(root) {
   }
 
   function cloudPanel() {
+    const syncUi = syncRuntime.getUi();
     if (!cloudCfg.configured) {
       return `<section class="panel cloud-panel">
-        <h2>가족 클라우드 (S5-A)</h2>
+        <h2>우리 집 클라우드 (S5-B)</h2>
         <p class="hint">아직 Supabase가 연결되지 않았어요. Ollama·규칙·장보기는 로컬만으로 계속 쓸 수 있어요.</p>
         <pre class="ai-hint">${esc(cloudSetupSteps())}</pre>
         <p class="hint">상세: docs/SUPABASE_SETUP.md</p>
@@ -594,10 +759,15 @@ export function createApp(root) {
     }
 
     const activeHid = state.cloud?.householdId;
+    const modeLabel =
+      state.cloud?.mode === 'cloud-primary'
+        ? '클라우드가 기본 저장소'
+        : '아직 로컬 우선 (이전 승인 전)';
+
     if (!cloudUi.user) {
       return `<section class="panel cloud-panel">
         <h2>우리 집 클라우드</h2>
-        <p class="hint">엄마·아빠가 각각 가입할 필요 없어요. <strong>가족 공용 계정 하나</strong>만 만들면 됩니다.</p>
+        <p class="hint">엄마·아빠가 각각 가입할 필요 없어요. <strong>관리자 공용 계정 하나</strong>만 만들면 Mac·iPhone·iPad에서 같은 데이터를 씁니다.</p>
         <p class="hint">${esc(cloudUi.message)}</p>
         <form data-form="cloud-auth" class="cloud-auth">
           <label>공용 이메일<input name="email" type="email" required autocomplete="username" /></label>
@@ -613,10 +783,13 @@ export function createApp(root) {
 
     return `<section class="panel cloud-panel">
       <h2>우리 집 클라우드</h2>
-      <p class="hint">공용 계정: ${esc(cloudUi.user.email || cloudUi.user.id)} · 연결된 집: ${esc(activeHid || '없음')}</p>
+      <p class="hint">계정: ${esc(cloudUi.user.email || cloudUi.user.id)}</p>
+      <p class="hint">상태: <strong>${esc(syncBadgeLabel(syncUi))}</strong> — ${esc(syncUi.message)} · ${esc(modeLabel)}</p>
+      ${syncUi.lastSyncedAt ? `<p class="hint">마지막 동기화: ${esc(new Date(syncUi.lastSyncedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }))} (Asia/Seoul)</p>` : ''}
       <p class="hint">${esc(cloudUi.message)}</p>
       <div class="row-actions wrap">
-        <button type="button" class="ghost" data-act="cloud-refresh" ${cloudUi.busy ? 'disabled' : ''}>새로고침</button>
+        <button type="button" class="ghost" data-act="cloud-refresh" ${cloudUi.busy ? 'disabled' : ''}>상태 새로고침</button>
+        <button type="button" class="ghost" data-act="cloud-pull-now" ${cloudUi.busy || !activeHid ? 'disabled' : ''}>지금 불러오기</button>
         <button type="button" class="ghost" data-act="cloud-signout" ${cloudUi.busy ? 'disabled' : ''}>로그아웃</button>
       </div>
       ${
@@ -635,15 +808,35 @@ export function createApp(root) {
       </form>`
       }
       ${
+        activeHid && state.cloud?.mode !== 'cloud-primary'
+          ? `<div class="preview-card migration-card">
+              <strong>이 기기 기록 → 클라우드 이전</strong>
+              <p class="hint">로컬 데이터는 삭제되지 않습니다. 먼저 중복·충돌을 확인한 뒤 승인하세요.</p>
+              <div class="row-actions wrap">
+                <button type="button" class="secondary" data-act="cloud-migrate-preview" ${cloudUi.busy ? 'disabled' : ''}>이전 미리보기</button>
+              </div>
+              ${
+                cloudUi.migrationPlan
+                  ? `<pre class="ai-hint">${esc(cloudUi.migrationText)}</pre>
+                     <button type="button" class="primary" data-act="cloud-migrate-approve" ${cloudUi.busy ? 'disabled' : ''}>확인했고 클라우드를 기본 저장소로 쓸게요</button>`
+                  : ''
+              }
+            </div>`
+          : ''
+      }
+      ${
+        activeHid && state.cloud?.mode === 'cloud-primary'
+          ? `<p class="hint">이제 장보기·재고·식단 변경은 승인된 제안/편집 후 클라우드에 동기화됩니다. 오프라인이면 조회만 가능합니다.</p>
+            <div class="row-actions wrap">
+              <button type="button" class="secondary" data-act="cloud-push" ${cloudUi.busy ? 'disabled' : ''}>지금 전체 다시 올리기</button>
+            </div>`
+          : ''
+      }
+      ${
         activeHid
-          ? `<div class="row-actions wrap">
-              <button type="button" class="primary" data-act="cloud-push" ${cloudUi.busy ? 'disabled' : ''}>이 기기 → 클라우드 복사</button>
-              <button type="button" class="ghost" data-act="cloud-pull" ${cloudUi.busy ? 'disabled' : ''}>클라우드 → 이 기기</button>
-            </div>
-            <p class="hint">복사·불러오기는 이 기기 데이터를 자동 삭제하지 않아요. 엄마·아빠 사이트 비밀번호는 여기에 저장하지 않습니다.</p>
-            <details class="cloud-advanced">
+          ? `<details class="cloud-advanced">
               <summary>고급 · 다른 로그인 계정 초대 (보통 안 씀)</summary>
-              <p class="hint">가족이 각자 계정을 쓰는 경우에만 필요합니다. 공용 계정 하나면 초대할 필요 없어요.</p>
+              <p class="hint">공용 계정 하나면 초대할 필요 없어요. 나중에 개별 계정이 필요할 때만 씁니다.</p>
               <div class="row-actions wrap">
                 <button type="button" class="secondary" data-act="cloud-invite" ${cloudUi.busy ? 'disabled' : ''}>초대 코드 만들기</button>
               </div>
@@ -1091,13 +1284,16 @@ export function createApp(root) {
         render();
         try {
           const hid = await createHousehold(fd.name, fd.budgetWon);
+          ensureDeviceLocalBackup(state);
           commit((s) => {
             s.cloud.householdId = hid;
+            s.cloud.mode = 'local';
+            s.cloud.migratedAt = null;
             s.household.name = String(fd.name || s.household.name).trim() || s.household.name;
             const b = Number(fd.budgetWon);
             if (Number.isFinite(b)) s.household.budgetWon = b;
           });
-          cloudUi.message = '우리 집을 만들었어요. 이제 이 기기 기록을 클라우드에 복사할 수 있어요.';
+          cloudUi.message = '우리 집을 만들었어요. 「이전 미리보기」로 중복·충돌을 확인한 뒤 클라우드를 기본 저장소로 승인해 주세요.';
           await refreshCloudSession();
         } catch (err) {
           cloudUi.message = err.message || '가구 생성에 실패했어요.';
@@ -1136,7 +1332,11 @@ export function createApp(root) {
       btn.onclick = async () => {
         commit((s) => {
           s.cloud.householdId = btn.dataset.id;
-        }, '활성 가구를 바꿨어요.');
+          // Selecting a household does not auto-migrate; stay local until approve.
+          if (s.cloud.mode !== 'cloud-primary') s.cloud.mode = 'local';
+        }, '집을 선택했어요. 이전이 필요하면 미리보기를 눌러 주세요.');
+        cloudUi.migrationPlan = null;
+        cloudUi.migrationText = '';
         await refreshCloudSession();
         render();
       };
@@ -1154,18 +1354,135 @@ export function createApp(root) {
       };
     }
 
+    const cloudPullNow = root.querySelector('[data-act=cloud-pull-now]');
+    if (cloudPullNow) {
+      cloudPullNow.onclick = async () => {
+        if (!isCloudPrimary()) {
+          setToast('클라우드 기본 저장소로 이전한 뒤에 불러올 수 있어요.');
+          return;
+        }
+        await pullCloudQuiet({ reason: 'manual' });
+        cloudUi.message = '클라우드 최신 데이터를 반영했어요.';
+      };
+    }
+
     const cloudSignout = root.querySelector('[data-act=cloud-signout]');
     if (cloudSignout) {
       cloudSignout.onclick = async () => {
+        await syncRuntime.dispose();
         await signOut();
+        const restored = isolateOnSignOut();
+        if (restored) {
+          state = restored;
+          ensureActiveList(state);
+        } else {
+          state.cloud = {
+            ...(state.cloud || {}),
+            userId: null,
+            householdId: null,
+            mode: 'local',
+          };
+          persist(state);
+        }
         cloudUi.user = null;
         cloudUi.households = [];
         cloudUi.members = [];
         cloudUi.inviteCode = '';
-        cloudUi.message = '로그아웃했어요. 로컬 데이터는 그대로예요.';
+        cloudUi.migrationPlan = null;
+        cloudUi.migrationText = '';
+        cloudUi.message = '로그아웃했어요. 계정 데이터를 섞지 않도록 이 기기는 로컬 백업으로 돌아갔어요.';
+        syncRuntime.setStatus(SyncStatus.idle, '로컬만 사용 중');
         render();
       };
     }
+
+    const migratePreview = root.querySelector('[data-act=cloud-migrate-preview]');
+    if (migratePreview) {
+      migratePreview.onclick = async () => {
+        if (!state.cloud?.householdId) return;
+        cloudUi.busy = true;
+        render();
+        try {
+          ensureDeviceLocalBackup(state);
+          const snap = await fetchCloudSnapshot(state, state.cloud.householdId);
+          const plan = buildMigrationPlan(state, snap);
+          cloudUi.migrationPlan = plan;
+          cloudUi.migrationText = formatMigrationPreview(plan);
+          cloudUi.message = '이전 미리보기를 준비했어요. 내용을 확인한 뒤 승인해 주세요.';
+        } catch (err) {
+          cloudUi.message = err.message || '미리보기 실패';
+        } finally {
+          cloudUi.busy = false;
+          render();
+        }
+      };
+    }
+
+    const migrateApprove = root.querySelector('[data-act=cloud-migrate-approve]');
+    if (migrateApprove) {
+      migrateApprove.onclick = async () => {
+        if (!state.cloud?.householdId || !cloudUi.migrationPlan) return;
+        if (
+          !confirm(
+            '이 기기 장보기·재고·식단·가족 프로필을 클라우드에 올리고, 이후 클라우드를 기본 저장소로 쓸까요?\n로컬 원본은 삭제되지 않습니다. 충돌 항목은 이 기기 값으로 덮어씁니다.',
+          )
+        ) {
+          return;
+        }
+        cloudUi.busy = true;
+        syncRuntime.setStatus(SyncStatus.syncing, '이전 중…');
+        render();
+        try {
+          ensureDeviceLocalBackup(state);
+          const result = await pushLocalToCloud(state, state.cloud.householdId);
+          const now = new Date().toISOString();
+          state.cloud.mode = 'cloud-primary';
+          state.cloud.migratedAt = now;
+          state.cloud.lastPushedAt = now;
+          state.cloud.userId = cloudUi.user?.id || state.cloud.userId;
+          persistActive();
+          cloudUi.migrationPlan = null;
+          cloudUi.migrationText = '';
+          cloudUi.message = `이전 완료 (장보기 ${result.counts.shoppingItems}, 재고 ${result.counts.inventory}, 프로필 ${result.counts.familyProfiles}). 이제 이 계정이 기본 저장소예요.`;
+          syncRuntime.setStatus(SyncStatus.ok, '이전·동기화 완료', { syncedAt: now, error: null });
+          await startCloudListeners();
+          await pullCloudQuiet({ reason: 'post-migrate' });
+        } catch (err) {
+          cloudUi.message = err.message || '이전에 실패했어요.';
+          syncRuntime.setStatus(SyncStatus.error, cloudUi.message, { error: cloudUi.message });
+        } finally {
+          cloudUi.busy = false;
+          render();
+        }
+      };
+    }
+
+    const addMember = root.querySelector('[data-form=add-member]');
+    if (addMember) {
+      addMember.onsubmit = (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(addMember));
+        commit((s) => {
+          s.members = s.members || [];
+          s.members.push({
+            id: uid(),
+            displayName: String(fd.displayName || '').trim(),
+            roleLabel: fd.roleLabel || '구성원',
+            role: fd.roleLabel === '관리자' ? 'owner' : 'member',
+            note: '',
+            sortOrder: s.members.length,
+          });
+        }, '가족 프로필을 추가했어요.');
+      };
+    }
+
+    root.querySelectorAll('[data-act=remove-member]').forEach((btn) => {
+      btn.onclick = () => {
+        commit((s) => {
+          s.members = (s.members || []).filter((m) => m.id !== btn.dataset.id);
+        }, '프로필을 삭제했어요.');
+      };
+    });
 
     const cloudInvite = root.querySelector('[data-act=cloud-invite]');
     if (cloudInvite) {
@@ -1189,50 +1506,13 @@ export function createApp(root) {
     const cloudPush = root.querySelector('[data-act=cloud-push]');
     if (cloudPush) {
       cloudPush.onclick = async () => {
-        if (!state.cloud?.householdId) return;
-        if (!confirm('이 기기의 장보기·재고·식단을 클라우드 가구로 복사할까요?\n로컬 데이터는 삭제되지 않습니다.')) return;
+        if (!isCloudPrimary()) return;
         cloudUi.busy = true;
         render();
-        try {
-          const result = await pushLocalToCloud(state, state.cloud.householdId);
-          commit((s) => {
-            s.cloud.lastPushedAt = new Date().toISOString();
-          });
-          cloudUi.message = `복사 완료 (장보기 ${result.counts.shoppingItems}, 재고 ${result.counts.inventory}). 로컬 유지.`;
-        } catch (err) {
-          cloudUi.message = err.message || '복사 실패';
-        } finally {
-          cloudUi.busy = false;
-          render();
-        }
-      };
-    }
-
-    const cloudPull = root.querySelector('[data-act=cloud-pull]');
-    if (cloudPull) {
-      cloudPull.onclick = async () => {
-        if (!state.cloud?.householdId) return;
-        if (
-          !confirm(
-            '클라우드 가구 데이터로 이 기기 화면을 갱신할까요?\n현재 로컬 JSON은 자동 삭제되지 않습니다. 필요하면 먼저 JSON 내보내기를 하세요.',
-          )
-        ) {
-          return;
-        }
-        cloudUi.busy = true;
+        await pushCloudQuiet();
+        cloudUi.message = '전체 다시 올리기를 마쳤어요.';
+        cloudUi.busy = false;
         render();
-        try {
-          const next = await pullCloudToState(state, state.cloud.householdId);
-          state = next;
-          persist(state);
-          cloudUi.message = '클라우드 데이터를 이 기기에 반영했어요. (이전 로컬은 자동 삭제되지 않음)';
-          setToast('클라우드에서 불러왔어요.');
-        } catch (err) {
-          cloudUi.message = err.message || '불러오기 실패';
-        } finally {
-          cloudUi.busy = false;
-          render();
-        }
       };
     }
 
