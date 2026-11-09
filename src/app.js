@@ -24,10 +24,12 @@ import { suggestToday, draftWeek } from './domain/meals.js';
 import { parseQuickAdd } from './domain/quick-add.js';
 import {
   generateSuggestions,
-  applySuggestion,
   dismissSuggestion,
   suggestionFingerprint,
+  previewProposal,
+  applyProposal,
 } from './domain/suggestions.js';
+import { ProposalError } from './domain/proposals.js';
 
 export function createApp(root) {
   let state = bootState();
@@ -39,6 +41,8 @@ export function createApp(root) {
   let editingId = null;
   let pendingProposals = [];
   let quickDraft = null;
+  /** @type {null | { proposal: object, preview: object }} */
+  let pendingApproval = null;
 
   const setToast = (msg) => {
     toast = msg;
@@ -149,6 +153,7 @@ export function createApp(root) {
           </section>`
           : ''
       }
+      ${pendingApproval ? approvalPanel(pendingApproval) : ''}
       <section class="panel">
         <h2>지금 챙길 일</h2>
         ${
@@ -164,8 +169,27 @@ export function createApp(root) {
           <button type="button" class="secondary" data-nav="inventory">재고</button>
           <button type="button" class="secondary" data-nav="meals">식단</button>
         </div>
-        <p class="hint">AI 없이 규칙으로 제안해요. 데이터는 이 기기에만 저장돼요.</p>
+        <p class="hint">변경은 미리보기 후 승인해야 저장돼요. AI 없이도 규칙으로 동작해요.</p>
       </section>`;
+  }
+
+  function approvalPanel({ proposal, preview }) {
+    return `<section class="panel approval" role="dialog" aria-label="변경 미리보기">
+      <h2>변경 미리보기</h2>
+      <p><strong>${esc(proposal.title)}</strong></p>
+      <p class="hint">${esc(proposal.reason)}</p>
+      ${
+        preview.ok
+          ? `<ul class="change-list">${preview.changes.map((c) => `<li>${esc(c.text)}</li>`).join('')}</ul>
+             <p class="hint">승인 전에는 데이터가 바뀌지 않아요.</p>
+             <div class="suggest-actions">
+               <button type="button" class="primary" data-act="confirm-proposal">승인하고 저장</button>
+               <button type="button" class="ghost" data-act="cancel-proposal">취소</button>
+             </div>`
+          : `<ul class="error-list">${preview.errors.map((e) => `<li>${esc(e.message)}</li>`).join('')}</ul>
+             <button type="button" class="ghost" data-act="cancel-proposal">닫기</button>`
+      }
+    </section>`;
   }
 
   function suggestCard(s) {
@@ -174,9 +198,10 @@ export function createApp(root) {
       <div>
         <strong>${esc(s.title)}</strong>
         <p>${esc(s.reason)}</p>
+        <small class="hint">${(s.ops || []).length}개 작업 · ${esc(s.source || 'rules')}</small>
       </div>
       <div class="suggest-actions">
-        <button type="button" class="primary" data-act="accept-suggestion" data-fp="${esc(fp)}">${esc(s.actionLabel)}</button>
+        <button type="button" class="primary" data-act="preview-suggestion" data-fp="${esc(fp)}">${esc(s.actionLabel || '변경 미리보기')}</button>
         <button type="button" class="ghost" data-act="dismiss-suggestion" data-fp="${esc(fp)}">나중에</button>
       </div>
     </li>`;
@@ -435,7 +460,7 @@ export function createApp(root) {
       };
     });
 
-    root.querySelectorAll('[data-act=accept-suggestion]').forEach((btn) => {
+    root.querySelectorAll('[data-act=preview-suggestion]').forEach((btn) => {
       btn.onclick = () => {
         const pack = generateSuggestions(state);
         const suggestion = (pack.suggestions || []).find((s) => suggestionFingerprint(s) === btn.dataset.fp);
@@ -444,16 +469,54 @@ export function createApp(root) {
           return;
         }
         try {
+          const preview = previewProposal(state, suggestion);
+          pendingApproval = { proposal: suggestion, preview };
+          // Preview must not persist domain changes — only re-render.
+          render();
+          if (!preview.ok) setToast(preview.errors[0]?.message || '이 제안은 적용할 수 없어요.');
+        } catch (err) {
+          pendingApproval = null;
+          setToast(err.message || '미리보기에 실패했어요.');
+        }
+      };
+    });
+
+    root.querySelectorAll('[data-act=confirm-proposal]').forEach((btn) => {
+      btn.onclick = () => {
+        if (!pendingApproval?.proposal) return;
+        const proposal = pendingApproval.proposal;
+        try {
           let msg = '반영했어요.';
+          let navigate = null;
           commit((s) => {
-            const result = applySuggestion(s, suggestion);
-            if (result?.navigate) s.settings.view = result.navigate;
-            if (result?.message) msg = result.message;
+            const result = applyProposal(s, proposal);
+            msg = result.message || msg;
+            navigate = result.navigate;
+            if (navigate) s.settings.view = navigate === 'home' ? 'home' : navigate;
           });
+          pendingApproval = null;
           setToast(msg);
         } catch (err) {
-          setToast(err.message);
+          const message = err instanceof ProposalError || err?.message ? err.message : '저장에 실패했어요.';
+          setToast(message);
+          // Keep preview open; state unchanged on failure.
+          try {
+            pendingApproval = {
+              proposal,
+              preview: previewProposal(state, proposal),
+            };
+          } catch {
+            pendingApproval = null;
+          }
+          render();
         }
+      };
+    });
+
+    root.querySelectorAll('[data-act=cancel-proposal]').forEach((btn) => {
+      btn.onclick = () => {
+        pendingApproval = null;
+        render();
       };
     });
 
@@ -465,6 +528,7 @@ export function createApp(root) {
           render();
           return;
         }
+        pendingApproval = null;
         commit((s) => {
           dismissSuggestion(s, suggestion);
         }, '이 제안은 잠시 숨길게요.');

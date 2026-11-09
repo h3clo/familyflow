@@ -4,7 +4,7 @@ import { seedState } from './seed.js';
 
 export function createEmptyState() {
   return {
-    version: 2,
+    version: 3,
     household: {
       id: uid(),
       name: '우리 집',
@@ -19,6 +19,7 @@ export function createEmptyState() {
     mealPlan: null,
     todayDinner: null,
     suggestionsMeta: { dismissed: {} },
+    proposalsMeta: { applied: {} },
     settings: {
       activeListId: null,
       view: 'home',
@@ -36,15 +37,19 @@ export function migrateState(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const state = structuredClone(raw);
   if (!state.version || state.version < 2) {
-    state.version = 2;
     state.todayDinner = state.todayDinner || null;
     state.suggestionsMeta = state.suggestionsMeta || { dismissed: {} };
     if (!state.suggestionsMeta.dismissed) state.suggestionsMeta.dismissed = {};
     if (!state.settings) state.settings = {};
-    // Prefer home as the assistant entry; keep last tool tab only if already home.
     if (!state.settings.view || state.settings.view === 'shopping') {
       state.settings.view = 'home';
     }
+    state.version = 2;
+  }
+  if (state.version < 3) {
+    state.proposalsMeta = state.proposalsMeta || { applied: {} };
+    if (!state.proposalsMeta.applied) state.proposalsMeta.applied = {};
+    state.version = 3;
   }
   return state;
 }
