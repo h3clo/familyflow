@@ -5,15 +5,15 @@
 
 ## 현재 시작점 (2026-11-10 Asia/Seoul)
 
-**방금 완료:** 로컬 tip을 GitHub `h3clo/familyflow`에 **force 없이** 보존 push함.  
-- `origin/cursor/ai-failover-normalize-fbf0` → `676a43e`  
-- `origin/cursor/ops-docs-p0-fbf0` → `5c91334` (조상에 AI failover `676a43e` 포함)  
-- 로컬 `main` tip `178f90f`는 원격에 **아직 없음** (`origin/main`은 무관 Initial `a5c0265`). **main push/병합·force 금지** (별도 승인 전).
+**방금 완료:** Git 이력 정상화 — `cursor/history-unify-c704`에서 `origin/main`(Initial `a5c0265`)과 Family Flow tip(`f9e49f5`)을 `--allow-unrelated-histories`로 통합(merge). force·재작성·브랜치 삭제 없음.  
+- 보존 tip: `676a43e` · `5c91334` · `f9e49f5` · `178f90f` · `a5c0265` 모두 조상으로 도달 가능  
+- 충돌: `README.md` add/add만 → Family Flow README 유지 (Initial은 `# familyflow` stub)  
+- 검증: `npm test` 59 pass · `npm run build` ok  
+- **main 직접 push/병합 금지** — 통합 브랜치 → main **PR 승인 대기**
 
-**다음 행동 (한 가지):** 사용자가 UX/UI 재설계 **방향(A/B/C 또는 혼합)을 승인**할 때까지 UI 코드를 수정하지 않는다.  
-승인 전에는 가이드·결정 문서 보완이나, 승인된 범위의 비UI 버그/문서만 다룬다. 홈 구현 착수 금지.
+**다음 행동 (한 가지):** 사용자가 위 이력 통합 PR을 **검토·병합 승인**할 때까지 `main`을 변경하지 않는다. UX/UI 재설계 구현은 **별도 승인 후** (이번 작업 범위 아님).
 
-브랜치 참고: 작업 tip은 `cursor/ops-docs-p0-fbf0` (`5c91334`+). Cloud/로컬 모두 이 브랜치를 기준으로 이어서 연다.
+브랜치 참고: 이력 통합 tip `cursor/history-unify-c704`. 기존 `cursor/ops-docs-p0-fbf0` / `cursor/ai-failover-normalize-fbf0`는 유지.
 
 ## 구현 완료 (코드에 존재)
 
@@ -64,8 +64,8 @@
 
 1. ~~운영 문서 최소 세트~~ → **완료**
 2. ~~피처 브랜치 tip 원격 보존 (`676a43e` / `5c91334`)~~ → **완료**
-3. UX 방향 사용자 승인 대기 (UI 코드 금지 유지)
-4. (별도 승인) `main`을 `178f90f` 계열로 맞추는 전략 — force 금지·non-FF 주의
+3. ~~main ↔ 개발 tip 무관 이력 통합 브랜치·PR~~ → **PR 승인 대기** (`cursor/history-unify-c704`)
+4. UX 방향 사용자 승인 대기 (UI 코드 금지 유지)
 
 ### P1 (승인 후)
 
