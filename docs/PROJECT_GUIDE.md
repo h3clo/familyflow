@@ -5,13 +5,13 @@
 
 ## 현재 시작점 (2026-11-10 Asia/Seoul)
 
-**방금 완료:** PR #1 merge commit으로 `main` 통합 (`b2752e1`). Vite `base=/familyflow/`(GITHUB_ACTIONS) 확인. 공개 번들 실키 없음. Family Flow Supabase RLS 전원 ON·가구 멤버십 정책 확인.  
-- Pages: merge 직후 Actions **build 성공 / deploy 실패** — 저장소 Pages가 아직 비활성(API 403으로 에이전트가 켤 수 없음).  
-- 배포 URL 목표: `https://h3clo.github.io/familyflow/`
+**방금 완료:** PR #1 `main` 병합 (`b2752e1`). Pages Source=workflow 확인. `.env.production`에 publishable 공개 설정만 커밋해 Pages 빌드 가능.  
+- 배포 URL: `https://h3clo.github.io/familyflow/`  
+- **남은 수동 1건:** Supabase Auth Site/Redirect URL (브라우저 세션 없음 → 대시보드 로그인 필요)
 
-**다음 행동 (한 가지):** 사용자가 GitHub Pages Source=Actions 활성화 + (권장) Actions 시크릿 `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` + Supabase Auth Site/Redirect URL을 Pages 주소에 맞춘 뒤, Pages 워크플로를 재실행해 **첫 배포를 완료**한다. UX/UI 재설계는 별도 승인 전 금지.
+**다음 행동 (한 가지):** Auth URL을 Pages 주소에 맞춘 뒤 실URL에서 로그인·동기화 스모크. UX/UI 재설계는 별도 승인 전 금지.
 
-브랜치 참고: 이후 Cloud Agent 작업 기준은 **`main`**.
+브랜치 참고: Cloud Agent 작업 기준 **`main`**.
 
 ## 구현 완료 (코드에 존재)
 
@@ -63,7 +63,7 @@
 1. ~~운영 문서 최소 세트~~ → **완료**
 2. ~~피처 브랜치 tip 원격 보존~~ → **완료**
 3. ~~main 이력 통합 PR #1 merge~~ → **완료** (`b2752e1`)
-4. GitHub Pages 첫 배포 — **Pages 활성화·공개 Vite 시크릿·Auth URL 대기**
+4. GitHub Pages 첫 배포 — **배포 진행/검증** (Auth URL만 수동 남을 수 있음)
 5. UX 방향 사용자 승인 대기 (UI 코드 금지 유지)
 
 ### P1 (승인 후)

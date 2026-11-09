@@ -17,16 +17,12 @@ Supabase Dashboard → Authentication → URL Configuration에 다음을 맞춘�
 이메일 매직링크·OAuth 콜백이 Pages와 로컬 둘 다에서 동작하려면 위 Redirect를 **모두** 넣는다.  
 `GROQ_API_KEY`·`service_role`은 Auth URL과 무관하며 Edge Secrets / 서버에만 둔다.
 
-## GitHub Pages 빌드용 공개 시크릿
+## GitHub Pages 빌드용 공개 설정
 
-저장소 Settings → Secrets and variables → Actions:
+Pages 프로덕션 빌드는 커밋된 `.env.production`의 **publishable/anon 공개 값**만 사용한다.  
+(Cursor GitHub App은 Actions Secrets 쓰기 권한이 없어, 클라이언트 공개 키를 `.env.production`에 둔다.)
 
-| Secret 이름 | 내용 |
-| --- | --- |
-| `VITE_SUPABASE_URL` | `https://gocbvzsljkhnttcydpcv.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | publishable/anon **공개** 키만 |
-
-`service_role`·`GROQ_API_KEY`는 GitHub Actions 프론트 빌드 시크릿에 **넣지 않는다**.
+`service_role`·`GROQ_API_KEY`는 `.env.production`·프론트 번들·Actions 로그에 **넣지 않는다**. Edge Secrets만 사용.
 
 ## 현재 상태 (에이전트가 완료)
 
