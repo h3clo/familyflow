@@ -9,9 +9,12 @@ GitHub push·공개 배포는 하지 않습니다.
 
 이미 적용됨:
 - core + S5-A 스키마/RLS/RPC
+- S5-B `family_profiles` + realtime publication
 - 가입 시 이메일 자동 확인 트리거 (`ff_autoconfirm_user`) — SMTP 없이 바로 로그인 가능
 - 초대 RPC `expires_at` 모호성 수정
 - 로컬 `.env.local` (이 저장소, gitignore)
+
+다기기 동기화 상세: `docs/S5B_SYNC.md`
 
 로컬 앱: `http://127.0.0.1:5174/` → **더보기 → 가족 클라우드**에서 **우리 집 계정 하나** 만들기.
 
