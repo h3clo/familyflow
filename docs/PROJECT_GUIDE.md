@@ -5,15 +5,11 @@
 
 ## 현재 시작점 (2026-11-10 Asia/Seoul)
 
-**방금 완료:** PR #1·#2 merge commit 병합. GitHub Pages **첫 배포 성공**.  
-- `main` tip: 최신 merge (`af9f4ee` 계열)  
-- 배포 URL: https://h3clo.github.io/familyflow/  
-- Vite base `/familyflow/`, `.env.production` publishable만, RLS ON 확인  
-- **남은 수동 1건:** Supabase Auth Site URL / Redirect URLs를 Pages 주소에 맞추기 (에이전트 브라우저에 대시보드 로그인 세션 없음)
+**방금 완료:** 실사용 피드백 — 미로그인 첫 화면을 로그인/가입 우선으로, 가입 시 입력한 **집 이름 → create_household**까지 한 번에 연결. (전면 UX 재설계 아님)
 
-**다음 행동 (한 가지):** Auth URL 설정 후 Pages에서 로그인·클라우드 동기화 스모크. UX/UI 재설계는 별도 승인 전 금지.
+**다음 행동 (한 가지):** 배포 후 Pages에서 첫 방문·신규 가입 스모크(집 이름 반영 확인). UX A/B/C 전면 재설계는 별도 승인 전 금지.
 
-브랜치 참고: Cloud Agent 작업 기준 **`main`**.
+브랜치 참고: Cloud Agent 작업 기준 **`main`**. 이 수정은 `cursor/auth-first-onboarding-c704`.
 
 ## 구현 완료 (코드에 존재)
 
