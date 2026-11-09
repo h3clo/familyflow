@@ -196,9 +196,13 @@ begin
 
   insert into public.household_invites (household_id, code, role, created_by, expires_at)
   values (p_household_id, v_code, v_role, auth.uid(), v_exp)
-  returning id, expires_at into v_id, v_exp;
+  returning id into v_id;
 
-  return query select v_id, v_code, v_exp;
+  -- Assign OUT columns explicitly (avoids RETURNS TABLE vs RETURNING expires_at ambiguity).
+  invite_id := v_id;
+  code := v_code;
+  expires_at := v_exp;
+  return next;
 end;
 $$;
 
