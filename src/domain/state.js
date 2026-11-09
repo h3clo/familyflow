@@ -4,7 +4,7 @@ import { seedState } from './seed.js';
 
 export function createEmptyState() {
   return {
-    version: 4,
+    version: 5,
     household: {
       id: uid(),
       name: '우리 집',
@@ -20,6 +20,12 @@ export function createEmptyState() {
     todayDinner: null,
     suggestionsMeta: { dismissed: {} },
     proposalsMeta: { applied: {} },
+    cloud: {
+      householdId: null,
+      lastPushedAt: null,
+      lastPulledAt: null,
+      userId: null,
+    },
     settings: {
       activeListId: null,
       view: 'home',
@@ -61,6 +67,15 @@ export function migrateState(raw) {
     if (!state.settings.ai.model) state.settings.ai.model = 'qwen3:4b';
     if (!state.settings.ai.provider) state.settings.ai.provider = 'ollama';
     state.version = 4;
+  }
+  if (state.version < 5) {
+    state.cloud = state.cloud || {
+      householdId: null,
+      lastPushedAt: null,
+      lastPulledAt: null,
+      userId: null,
+    };
+    state.version = 5;
   }
   return state;
 }

@@ -338,6 +338,15 @@ details summary { cursor: pointer; font-weight: 600; }
   resize: vertical;
   min-height: 64px;
 }
+.cloud-auth {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+}
+.cloud-panel code {
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+}
 
 .tabbar {
   position: fixed;
