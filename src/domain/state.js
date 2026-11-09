@@ -4,7 +4,7 @@ import { seedState } from './seed.js';
 
 export function createEmptyState() {
   return {
-    version: 3,
+    version: 4,
     household: {
       id: uid(),
       name: '우리 집',
@@ -25,6 +25,10 @@ export function createEmptyState() {
       view: 'home',
       localAi: false,
       todayFlags: null,
+      ai: {
+        provider: 'ollama',
+        model: 'qwen3:4b',
+      },
     },
     meta: {
       createdAt: new Date().toISOString(),
@@ -50,6 +54,13 @@ export function migrateState(raw) {
     state.proposalsMeta = state.proposalsMeta || { applied: {} };
     if (!state.proposalsMeta.applied) state.proposalsMeta.applied = {};
     state.version = 3;
+  }
+  if (state.version < 4) {
+    if (!state.settings) state.settings = {};
+    state.settings.ai = state.settings.ai || { provider: 'ollama', model: 'qwen3:4b' };
+    if (!state.settings.ai.model) state.settings.ai.model = 'qwen3:4b';
+    if (!state.settings.ai.provider) state.settings.ai.provider = 'ollama';
+    state.version = 4;
   }
   return state;
 }

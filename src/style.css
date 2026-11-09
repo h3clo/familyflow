@@ -275,6 +275,28 @@ details summary { cursor: pointer; font-weight: 600; }
   gap: 6px;
 }
 .error-list { color: var(--danger); }
+.ai-panel code {
+  font-size: 0.85em;
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+.ai-status { margin: 10px 0; }
+.ai-hint {
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 8px 0 12px;
+  overflow-x: auto;
+}
+.ai-settings {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
 
 .tabbar {
   position: fixed;

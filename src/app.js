@@ -30,6 +30,9 @@ import {
   applyProposal,
 } from './domain/suggestions.js';
 import { ProposalError } from './domain/proposals.js';
+import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
+import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
+import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
 
 export function createApp(root) {
   let state = bootState();
@@ -43,6 +46,23 @@ export function createApp(root) {
   let quickDraft = null;
   /** @type {null | { proposal: object, preview: object }} */
   let pendingApproval = null;
+  /** @type {{ status: string, message: string, models: string[], reply: string, busy: boolean, installHint: string }} */
+  let aiUi = {
+    status: 'idle',
+    message: '아직 확인하지 않았어요. 규칙 엔진은 AI 없이도 동작해요.',
+    models: [],
+    reply: '',
+    busy: false,
+    installHint: '',
+  };
+
+  function aiProvider() {
+    const model = state.settings.ai?.model || DEFAULT_MODEL;
+    return createOllamaProvider({
+      baseUrl: OLLAMA_PROXY_PREFIX,
+      preferredModel: model,
+    });
+  }
 
   const setToast = (msg) => {
     toast = msg;
@@ -74,17 +94,20 @@ export function createApp(root) {
           </div>
           <p class="household">${esc(state.household.name)}</p>
         </header>
-        <main class="main">${
-          view === 'home'
-            ? homeView()
-            : view === 'shopping'
-              ? shoppingView()
-              : view === 'inventory'
-                ? inventoryView()
-                : view === 'meals'
-                  ? mealsView()
-                  : moreView()
-        }</main>
+        <main class="main">
+          ${pendingApproval ? approvalPanel(pendingApproval) : ''}
+          ${
+            view === 'home'
+              ? homeView()
+              : view === 'shopping'
+                ? shoppingView()
+                : view === 'inventory'
+                  ? inventoryView()
+                  : view === 'meals'
+                    ? mealsView()
+                    : moreView()
+          }
+        </main>
         ${toast ? `<div class="toast" role="status">${esc(toast)}</div>` : ''}
         <nav class="tabbar" aria-label="주요 메뉴">
           ${tab('home', '홈')}
@@ -153,7 +176,6 @@ export function createApp(root) {
           </section>`
           : ''
       }
-      ${pendingApproval ? approvalPanel(pendingApproval) : ''}
       <section class="panel">
         <h2>지금 챙길 일</h2>
         ${
@@ -258,10 +280,12 @@ export function createApp(root) {
 
       ${
         suggestions.length
-          ? `<section class="panel"><h2>재고에서 제안</h2><ul class="chip-list">${suggestions
+          ? `<section class="panel"><h2>재고에서 제안</h2>
+            <p class="hint">탭하면 미리보기가 열리고, 승인한 뒤에만 장보기에 들어가요.</p>
+            <ul class="chip-list">${suggestions
               .map(
                 (s) =>
-                  `<li><button type="button" data-act="add-suggestion" data-name="${esc(s.name)}" data-qty="${s.quantity}" data-unit="${esc(s.unit)}" data-priority="${s.priority}" data-category="${s.category}" data-inventory="${s.inventoryId}">${esc(s.name)}</button></li>`,
+                  `<li><button type="button" data-act="preview-inv-suggestion" data-name="${esc(s.name)}" data-qty="${s.quantity}" data-unit="${esc(s.unit)}" data-priority="${s.priority}" data-category="${s.category}" data-inventory="${s.inventoryId || ''}">${esc(s.name)} · 미리보기</button></li>`,
               )
               .join('')}</ul></section>`
           : ''
@@ -427,6 +451,16 @@ export function createApp(root) {
   }
 
   function moreView() {
+    const model = state.settings.ai?.model || DEFAULT_MODEL;
+    const statusLabel = {
+      idle: '미확인',
+      checking: '확인 중…',
+      ready: '연결됨',
+      offline: '오프라인',
+      missing_model: '모델 없음',
+      error: '오류',
+    }[aiUi.status] || aiUi.status;
+
     return `
       <section class="panel">
         <h2>가정</h2>
@@ -435,6 +469,26 @@ export function createApp(root) {
           <label>기본 장보기 예산<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon}" /></label>
           <button type="submit" class="primary">저장</button>
         </form>
+      </section>
+      <section class="panel ai-panel" data-ai-panel>
+        <h2>로컬 AI (Ollama)</h2>
+        <p class="hint">규칙은 기본이고 AI는 선택입니다. 연결이 안 되어도 홈·장보기·재고·식단은 그대로 동작해요. 브라우저 → <code>${esc(OLLAMA_PROXY_PREFIX)}</code> 프록시 → 이 기기 loopback Ollama만 사용합니다. :11434를 인터넷에 열지 마세요.</p>
+        <form data-form="ai-settings" class="ai-settings">
+          <label>기본 모델<input name="model" value="${esc(model)}" maxlength="64" placeholder="${esc(DEFAULT_MODEL)}" /></label>
+          <button type="submit" class="ghost" ${aiUi.busy ? 'disabled' : ''}>모델 이름 저장</button>
+        </form>
+        <p class="ai-status"><strong>상태:</strong> ${esc(statusLabel)} — ${esc(aiUi.message)}</p>
+        ${
+          aiUi.models.length
+            ? `<p class="hint">설치됨: ${aiUi.models.map((m) => esc(m)).join(', ')}</p>`
+            : ''
+        }
+        ${aiUi.installHint ? `<pre class="ai-hint">${esc(aiUi.installHint)}</pre>` : ''}
+        ${aiUi.reply ? `<div class="preview-card" role="status"><strong>테스트 응답</strong><p>${esc(aiUi.reply)}</p></div>` : ''}
+        <div class="row-actions wrap">
+          <button type="button" class="secondary" data-act="ai-probe" ${aiUi.busy ? 'disabled' : ''}>연결 확인</button>
+          <button type="button" class="primary" data-act="ai-smoke" ${aiUi.busy ? 'disabled' : ''}>응답 테스트</button>
+        </div>
       </section>
       <section class="panel">
         <h2>데이터</h2>
@@ -618,19 +672,109 @@ export function createApp(root) {
         commit((s) => removeShoppingItem(ensureActiveList(s), el.dataset.id), '삭제했어요.');
       };
     });
-    root.querySelectorAll('[data-act=add-suggestion]').forEach((el) => {
-      el.onclick = () =>
-        commit((s) => {
-          addShoppingItem(ensureActiveList(s), {
+    root.querySelectorAll('[data-act=preview-inv-suggestion]').forEach((el) => {
+      el.onclick = () => {
+        try {
+          const proposal = proposalFromInventoryChip({
             name: el.dataset.name,
             quantity: Number(el.dataset.qty),
             unit: el.dataset.unit,
             priority: el.dataset.priority,
             category: el.dataset.category,
-            inventoryId: el.dataset.inventory,
+            inventoryId: el.dataset.inventory || null,
           });
-        }, '재고 제안을 목록에 넣었어요.');
+          const preview = previewProposal(state, proposal);
+          pendingApproval = { proposal, preview };
+          render();
+          if (!preview.ok) setToast(preview.errors[0]?.message || '이 제안은 적용할 수 없어요.');
+        } catch (err) {
+          pendingApproval = null;
+          setToast(err.message || '미리보기에 실패했어요.');
+        }
+      };
     });
+
+    const aiSettings = root.querySelector('[data-form=ai-settings]');
+    if (aiSettings) {
+      aiSettings.onsubmit = (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(aiSettings));
+        commit((s) => {
+          if (!s.settings.ai) s.settings.ai = { provider: 'ollama', model: DEFAULT_MODEL };
+          s.settings.ai.model = String(fd.model || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
+          s.settings.ai.provider = 'ollama';
+        }, 'AI 모델 이름을 저장했어요.');
+      };
+    }
+    const aiProbe = root.querySelector('[data-act=ai-probe]');
+    if (aiProbe) {
+      aiProbe.onclick = async () => {
+        aiUi = { ...aiUi, busy: true, status: 'checking', message: 'Ollama 상태를 확인하는 중…', reply: '' };
+        render();
+        try {
+          const probe = await aiProvider().probe();
+          aiUi = {
+            ...aiUi,
+            busy: false,
+            status: probe.status,
+            message: probe.message,
+            models: probe.models || [],
+            installHint: probe.detail?.installHint || (probe.status === 'offline' ? installHint(state.settings.ai?.model || DEFAULT_MODEL) : ''),
+            reply: '',
+          };
+        } catch (err) {
+          aiUi = {
+            ...aiUi,
+            busy: false,
+            status: 'error',
+            message: err.message || '확인에 실패했어요.',
+            installHint: installHint(state.settings.ai?.model || DEFAULT_MODEL),
+          };
+        }
+        render();
+      };
+    }
+    const aiSmoke = root.querySelector('[data-act=ai-smoke]');
+    if (aiSmoke) {
+      aiSmoke.onclick = async () => {
+        aiUi = { ...aiUi, busy: true, status: 'checking', message: '모델 응답을 요청하는 중…', reply: '' };
+        render();
+        try {
+          const result = await smokeTest(aiProvider(), { model: state.settings.ai?.model || DEFAULT_MODEL });
+          if (!result.ok) {
+            aiUi = {
+              ...aiUi,
+              busy: false,
+              status: result.probe.status,
+              message: result.probe.message,
+              models: result.probe.models || [],
+              installHint: result.probe.detail?.installHint || installHint(state.settings.ai?.model || DEFAULT_MODEL),
+              reply: '',
+            };
+          } else {
+            aiUi = {
+              ...aiUi,
+              busy: false,
+              status: 'ready',
+              message: result.probe.message,
+              models: result.probe.models || [],
+              installHint: '',
+              reply: result.reply?.text || '(빈 응답)',
+            };
+          }
+        } catch (err) {
+          aiUi = {
+            ...aiUi,
+            busy: false,
+            status: 'error',
+            message: err.message || '응답 테스트에 실패했어요. 규칙 엔진은 계속 쓸 수 있어요.',
+            installHint: installHint(state.settings.ai?.model || DEFAULT_MODEL),
+            reply: '',
+          };
+        }
+        render();
+      };
+    }
 
     const propose = root.querySelector('[data-act=propose-inventory]');
     if (propose) {
