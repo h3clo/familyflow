@@ -26,6 +26,8 @@ jobs:
       - run: npm test
       - run: npm run build
         env:
+          # Sets Vite base to /familyflow/. Public Supabase URL/publishable key
+          # come from committed .env.production (client-safe only).
           GITHUB_ACTIONS: true
       - uses: actions/upload-pages-artifact@v3
         with:
