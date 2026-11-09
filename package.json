@@ -1,0 +1,21 @@
+{
+  "name": "family-flow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/make-icons.mjs",
+    "prebuild": "node scripts/make-icons.mjs",
+    "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4174 --strictPort",
+    "test": "node --test tests/*.test.js",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "vite": "^8.3.6"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0"
+  }
+}
