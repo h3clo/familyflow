@@ -26,6 +26,8 @@
 
 응답은 항상 ActionProposal 검증·미리보기·승인.
 
+제안 ops는 `normalizeAiOp`로 보정한다. Groq가 `shopping.add`에서 수량을 빼먹거나 `name:"휴지 1롤"`처럼 묶으면 `parseQuickAdd`로 이름·수량·단위를 나눈 뒤 스키마 검증한다.
+
 ## Secrets
 
 `GROQ_API_KEY`는 Family Flow 프로젝트 Edge Secrets에만 둡니다.  
@@ -33,3 +35,10 @@
 
 대시보드: Project Settings → Edge Functions → Secrets  
 프로젝트: `gocbvzsljkhnttcydpcv` only
+
+## 검증 (2026-11-09, 시크릿 저장 후)
+
+- Edge `ai-complete` 인증 호출 HTTP 200 · `paidUpgrade:false`
+- 무인증 401 · 잘못된 JWT 401 · 다른 가구 403
+- Ollama 강제 offline → 라우터 `engine:groq` → ActionProposal → `applyProposal` 성공 (휴지 1롤)
+- `npm test` 59 pass · `npm run build` ok

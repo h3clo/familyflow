@@ -143,6 +143,52 @@ test('conversation uses Groq engine label and keeps ActionProposal gate', async 
   assert.equal(turn.preview.ok, true);
 });
 
+test('shopping.add without quantity gets safe defaults before proposal gate', async () => {
+  const state = seedState(createEmptyState());
+  const router = createAiRouter({
+    ollama: mockOllama({ ready: false }),
+    groq: mockGroq({
+      ready: true,
+      text: JSON.stringify({
+        kind: 'proposal',
+        message: '휴지를 장보기에 넣을게요',
+        title: '휴지',
+        reason: '요청',
+        ops: [{ op: 'shopping.add', payload: { name: '휴지' } }],
+      }),
+    }),
+  });
+  const turn = await runConversationTurn(state, 'XYZNOLOCAL_MISSING_QTY', router, { forceAi: true });
+  assert.equal(turn.kind, 'proposal');
+  assert.equal(turn.proposal.ops[0].payload.quantity, 1);
+  assert.equal(turn.proposal.ops[0].payload.unit, '개');
+  assert.equal(turn.proposal.ops[0].payload.priority, 'must');
+  assert.equal(turn.preview.ok, true);
+});
+
+test('shopping.add name with embedded qty/unit is split before proposal gate', async () => {
+  const state = seedState(createEmptyState());
+  const router = createAiRouter({
+    ollama: mockOllama({ ready: false }),
+    groq: mockGroq({
+      ready: true,
+      text: JSON.stringify({
+        kind: 'proposal',
+        message: '휴지 추가',
+        title: '휴지',
+        reason: '요청',
+        ops: [{ op: 'shopping.add', payload: { name: '휴지 1롤' } }],
+      }),
+    }),
+  });
+  const turn = await runConversationTurn(state, 'XYZNOLOCAL_EMBEDDED_QTY', router, { forceAi: true });
+  assert.equal(turn.kind, 'proposal');
+  assert.equal(turn.proposal.ops[0].payload.name, '휴지');
+  assert.equal(turn.proposal.ops[0].payload.quantity, 1);
+  assert.equal(turn.proposal.ops[0].payload.unit, '롤');
+  assert.equal(turn.preview.ok, true);
+});
+
 test('auth failure message does not suggest paid upgrade', async () => {
   const router = createAiRouter({
     ollama: mockOllama({ ready: false }),

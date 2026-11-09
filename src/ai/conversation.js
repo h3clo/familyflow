@@ -7,6 +7,7 @@
  */
 
 import { createProposal, previewProposal, ProposalError, SUPPORTED_OPS } from '../domain/proposals.js';
+import { parseQuickAdd } from '../domain/quick-add.js';
 import { buildHouseholdContext } from './householdContext.js';
 import { matchLocalIntent } from './localIntent.js';
 import { extractFinalText } from './ollama.js';
@@ -80,7 +81,9 @@ export function finalizeTurn(state, draft, { engine = 'ai' } = {}) {
   }
 
   let ops = Array.isArray(draft.ops) ? draft.ops : [];
-  ops = ops.filter((o) => o && SUPPORTED_OPS.includes(o.op));
+  ops = ops
+    .filter((o) => o && SUPPORTED_OPS.includes(o.op))
+    .map((o) => normalizeAiOp(o));
   if (!ops.length) {
     return {
       kind: 'clarify',
@@ -136,6 +139,27 @@ function defaultMessage(kind) {
   if (kind === 'clarify') return '조금 더 구체적으로 말씀해 주실 수 있나요?';
   if (kind === 'proposal') return '변경안을 준비했어요. 미리보기에서 승인해 주세요.';
   return '알겠어요.';
+}
+
+/** Fill safe defaults for cloud/local model ops before schema validation. */
+function normalizeAiOp(op) {
+  const payload = { ...(op.payload || {}) };
+  if (op.op === 'shopping.add') {
+    // Groq often emits name:"휴지 1롤" and omits quantity/unit — reuse quick-add parse.
+    const parsed = parseQuickAdd(String(payload.name || payload.item || payload.title || '').trim());
+    if (parsed?.name) {
+      payload.name = parsed.name;
+      const qty = Number(payload.quantity);
+      if (!Number.isFinite(qty) || qty <= 0) payload.quantity = parsed.quantity;
+      if (!payload.unit) payload.unit = parsed.unit;
+      if (!payload.category && parsed.category) payload.category = parsed.category;
+    }
+    const qty = Number(payload.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) payload.quantity = 1;
+    if (!payload.unit) payload.unit = '개';
+    if (payload.priority !== 'nice') payload.priority = 'must';
+  }
+  return { op: op.op, payload };
 }
 
 /**

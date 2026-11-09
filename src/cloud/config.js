@@ -2,7 +2,14 @@
  * Cloud config — publishable/anon key only. Never put service_role / secret keys here.
  */
 
-export function readCloudConfig(env = typeof import.meta !== 'undefined' ? import.meta.env : {}) {
+function defaultEnv() {
+  const meta = typeof import.meta !== 'undefined' ? import.meta.env : {};
+  const proc = typeof process !== 'undefined' ? process.env : {};
+  // Vite injects import.meta.env in the browser; Node scripts/tests can use process.env.
+  return { ...proc, ...meta };
+}
+
+export function readCloudConfig(env = defaultEnv()) {
   const url = String(env?.VITE_SUPABASE_URL || '').trim();
   const publishableKey = String(
     env?.VITE_SUPABASE_PUBLISHABLE_KEY || env?.VITE_SUPABASE_ANON_KEY || '',

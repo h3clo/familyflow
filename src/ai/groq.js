@@ -102,26 +102,22 @@ export function createGroqProvider(options = {}) {
         return { status: 'offline', message: 'Supabase 미설정 — Groq 프록시 사용 불가', models: [] };
       }
       const client = getSupabaseClient();
+      const injected = options.getAccessToken ? await options.getAccessToken() : null;
       const session = (await client?.auth.getSession())?.data?.session;
-      if (!session?.access_token) {
+      const token = injected || session?.access_token || null;
+      if (!token) {
         return {
           status: 'offline',
           message: '로그인 후 Groq 무료 클라우드를 쓸 수 있어요.',
           models: [preferredModel],
         };
       }
-      if (!(options.getHouseholdId?.() || null)) {
-        // household checked lazily on complete
-        return {
-          status: 'ready',
-          message: `Groq 준비됨 · ${preferredModel} (호출 시 집 권한·한도 검사)`,
-          models: [preferredModel],
-          detail: { activeModel: preferredModel },
-        };
-      }
+      const hid = options.getHouseholdId?.() || null;
       return {
         status: 'ready',
-        message: `Groq 준비됨 · ${preferredModel}`,
+        message: hid
+          ? `Groq 준비됨 · ${preferredModel}`
+          : `Groq 준비됨 · ${preferredModel} (호출 시 집 권한·한도 검사)`,
         models: [preferredModel],
         detail: { activeModel: preferredModel },
       };
