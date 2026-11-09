@@ -1,0 +1,22 @@
+{
+  "name": "Family Flow",
+  "short_name": "Family Flow",
+  "description": "가족 장보기와 식단 부담을 줄이는 생활 관리",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3efe6",
+  "theme_color": "#2f5d50",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
