@@ -163,5 +163,5 @@ test('AI JSON path via mock provider when forceAi', async () => {
 test('offline without local match stays safe', async () => {
   const turn = await runConversationTurn(fresh(), '양자역학이 뭐야?', mockProvider('offline'));
   assert.equal(turn.kind, 'clarify');
-  assert.match(turn.message, /Ollama/);
+  assert.match(turn.message, /AI에 연결|규칙/);
 });

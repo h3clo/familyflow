@@ -93,6 +93,8 @@ a { color: var(--brand); }
   gap: 6px;
 }
 .migration-card { margin-top: 12px; }
+.badge-row { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.sync-badge.sync-ai { color: var(--brand); border-color: #b7cfc6; background: #f3faf6; }
 
 .main { display: grid; gap: 14px; }
 .lede { margin: 0 0 4px; color: var(--muted); }

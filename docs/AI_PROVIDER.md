@@ -6,6 +6,7 @@
 - AI/로컬 의도 분석은 `ActionProposal` 후보만 만들고, 저장은 S2 `previewProposal` → 승인 → `applyProposal`만 한다.
 - 모델 응답을 신뢰하지 않는다. JSON 파싱 → op 화이트리스트 → 스키마·미리보기 검증.
 - **Ollama HTTP(:11434)를 공인 인터넷에 무인증 공개하지 않는다.**
+- 클라우드 AI는 **Ollama 불가 시** Supabase Edge `ai-complete` → Groq 무료만. 유료 자동 전환 없음. 상세: `docs/AI_FAILOVER.md`.
 
 ## localhost를 혼동하지 않기
 

@@ -1,6 +1,6 @@
 import { ensureActiveList } from '../domain/shopping.js';
 
-/** Compact, non-sensitive snapshot for prompts — no health/finance secrets. */
+/** Compact, non-sensitive snapshot for local Ollama — no health/finance secrets. */
 export function buildHouseholdContext(state) {
   const list = ensureActiveList(state);
   const open = (list.items || []).filter((i) => !i.checked);
@@ -44,6 +44,37 @@ export function buildHouseholdContext(state) {
     weekDinnerProteins: proteins,
     mealPlanStatus: state.mealPlan?.status || null,
     patterns,
+  };
+}
+
+/**
+ * Cloud-safe context for Groq Edge Function.
+ * No ids, no member notes, no health/finance, capped list sizes.
+ */
+export function buildCloudSafeContext(state) {
+  const full = buildHouseholdContext(state);
+  return {
+    household: full.household,
+    shoppingOpen: (full.shoppingOpen || []).slice(0, 40).map((i) => ({
+      name: i.name,
+      quantity: i.quantity,
+      unit: i.unit,
+      priority: i.priority,
+    })),
+    inventory: (full.inventory || []).slice(0, 60).map((i) => ({
+      name: i.name,
+      status: i.status,
+      location: i.location,
+      category: i.category,
+    })),
+    todayDinner: full.todayDinner,
+    weekDinnerProteins: (full.weekDinnerProteins || []).slice(0, 14),
+    mealPlanStatus: full.mealPlanStatus,
+    patterns: (full.patterns || []).slice(0, 12).map((p) => ({
+      name: p.name,
+      method: p.method,
+      effort: p.effort,
+    })),
   };
 }
 

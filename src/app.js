@@ -34,6 +34,8 @@ import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
 import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
 import { runConversationTurn } from './ai/conversation.js';
+import { createGroqProvider, GROQ_DEFAULT_MODEL } from './ai/groq.js';
+import { createAiRouter, formatRouteBadge } from './ai/router.js';
 import { readCloudConfig, cloudSetupSteps } from './cloud/config.js';
 import { getAuthSession, signInWithEmail, signUpWithEmail, signOut } from './cloud/auth.js';
 import {
@@ -81,7 +83,7 @@ export function createApp(root) {
   let chatLog = [];
   let chatBusy = false;
   let chatDraft = '';
-  /** @type {{ status: string, message: string, models: string[], reply: string, busy: boolean, installHint: string }} */
+  /** @type {{ status: string, message: string, models: string[], reply: string, busy: boolean, installHint: string, routeProvider: string, routeModel: string }} */
   let aiUi = {
     status: 'idle',
     message: '아직 확인하지 않았어요. 규칙 엔진은 AI 없이도 동작해요.',
@@ -89,6 +91,8 @@ export function createApp(root) {
     reply: '',
     busy: false,
     installHint: '',
+    routeProvider: 'none',
+    routeModel: '',
   };
   const cloudCfg = readCloudConfig();
   const syncRuntime = createSyncRuntime();
@@ -238,9 +242,24 @@ export function createApp(root) {
 
   function aiProvider() {
     const model = state.settings.ai?.model || DEFAULT_MODEL;
-    return createOllamaProvider({
+    const ollama = createOllamaProvider({
       baseUrl: OLLAMA_PROXY_PREFIX,
       preferredModel: model,
+    });
+    const groq = createGroqProvider({
+      preferredModel: GROQ_DEFAULT_MODEL,
+      getHouseholdId: () => state.cloud?.householdId || null,
+      getState: () => state,
+    });
+    return createAiRouter({
+      ollama,
+      groq,
+      getState: () => state,
+      onRoute: (info) => {
+        aiUi.routeProvider = info.provider;
+        aiUi.routeModel = info.model || '';
+        if (info.message) aiUi.message = info.message;
+      },
     });
   }
 
@@ -275,6 +294,12 @@ export function createApp(root) {
     const badge = isCloudPrimary()
       ? `<span class="sync-badge sync-${esc(syncUi.status)}" title="${esc(syncUi.message)}">${esc(syncBadgeLabel(syncUi))}</span>`
       : `<span class="sync-badge sync-idle">로컬</span>`;
+    const aiBadge = `<span class="sync-badge sync-ai" title="${esc(aiUi.message)}">${esc(
+      formatRouteBadge({
+        provider: aiUi.routeProvider,
+        model: aiUi.routeModel,
+      }),
+    )}</span>`;
     root.innerHTML = `
       <div class="shell">
         <header class="top">
@@ -284,7 +309,7 @@ export function createApp(root) {
           </div>
           <div class="top-meta">
             <p class="household">${esc(state.household.name)}</p>
-            ${badge}
+            <div class="badge-row">${badge}${aiBadge}</div>
           </div>
         </header>
         <main class="main">
@@ -714,10 +739,11 @@ export function createApp(root) {
       </section>
       ${cloudPanel()}
       <section class="panel ai-panel" data-ai-panel>
-        <h2>로컬 AI (Ollama)</h2>
-        <p class="hint">규칙은 기본이고 AI는 선택입니다. 연결이 안 되어도 홈·장보기·재고·식단은 그대로 동작해요. 브라우저 → <code>${esc(OLLAMA_PROXY_PREFIX)}</code> 프록시 → 이 기기 loopback Ollama만 사용합니다. :11434를 인터넷에 열지 마세요.</p>
+        <h2>AI 자동 전환</h2>
+        <p class="hint">우선순위: <strong>Ollama(로컬)</strong> → <strong>Groq 무료</strong>(Edge Function) → <strong>규칙</strong>. 유료 자동 전환 없음. Ollama는 <code>${esc(OLLAMA_PROXY_PREFIX)}</code> → loopback만. :11434 공인 개방 금지. Groq 키는 서버 Secrets만.</p>
+        <p class="hint">현재 경로: <strong>${esc(formatRouteBadge({ provider: aiUi.routeProvider, model: aiUi.routeModel }))}</strong> · Groq 모델 <code>${esc(GROQ_DEFAULT_MODEL)}</code></p>
         <form data-form="ai-settings" class="ai-settings">
-          <label>기본 모델<input name="model" value="${esc(model)}" maxlength="64" placeholder="${esc(DEFAULT_MODEL)}" /></label>
+          <label>Ollama 기본 모델<input name="model" value="${esc(model)}" maxlength="64" placeholder="${esc(DEFAULT_MODEL)}" /></label>
           <button type="submit" class="ghost" ${aiUi.busy ? 'disabled' : ''}>모델 이름 저장</button>
         </form>
         <p class="ai-status"><strong>상태:</strong> ${esc(statusLabel)} — ${esc(aiUi.message)}</p>
@@ -879,6 +905,11 @@ export function createApp(root) {
         render();
         try {
           const turn = await runConversationTurn(state, message, aiProvider());
+          if (turn.route) {
+            aiUi.routeProvider = turn.route.provider || aiUi.routeProvider;
+            aiUi.routeModel = turn.route.model || aiUi.routeModel;
+            if (turn.route.message) aiUi.message = turn.route.message;
+          }
           chatLog = [
             ...chatLog,
             {

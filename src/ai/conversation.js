@@ -2,6 +2,8 @@
  * S4 conversation → ActionProposal bridge.
  * Model output is never trusted: JSON parse → whitelist ops → createProposal → previewProposal.
  * Nothing is persisted here; UI must call applyProposal after user approval.
+ *
+ * Provider order (when using createAiRouter): Ollama → Groq Edge → rules/local.
  */
 
 import { createProposal, previewProposal, ProposalError, SUPPORTED_OPS } from '../domain/proposals.js';
@@ -137,12 +139,12 @@ function defaultMessage(kind) {
 }
 
 /**
- * High-confidence local patterns first (still schema-validated), else Ollama JSON,
- * else offline clarify. AI never writes domain state.
+ * High-confidence local patterns first, then router (Ollama → Groq), else rules clarify.
+ * AI never writes domain state.
  *
  * @param {object} state
  * @param {string} userText
- * @param {object} provider
+ * @param {object} provider — Ollama provider or createAiRouter()
  * @param {{ forceAi?: boolean }} [opts]
  */
 export async function runConversationTurn(state, userText, provider, opts = {}) {
@@ -160,71 +162,109 @@ export async function runConversationTurn(state, userText, provider, opts = {}) 
 
   const local = matchLocalIntent(state, text);
 
-  let probe = { status: 'offline' };
-  try {
-    probe = await provider.probe();
-  } catch {
-    probe = { status: 'offline' };
-  }
-  const ollamaReady = probe.status === 'ready';
-
   if (!opts.forceAi && local) {
-    const finalized = finalizeTurn(state, local, {
-      engine: ollamaReady ? 'local' : 'local-offline',
-    });
-    // Local clarify / chat / valid proposal — done
+    const finalized = finalizeTurn(state, local, { engine: 'local' });
     if (finalized.kind === 'chat' || finalized.kind === 'clarify' || finalized.kind === 'proposal') {
-      return finalized;
+      return { ...finalized, route: provider?.getRoute?.() || null };
     }
-  }
-
-  if (!ollamaReady) {
-    return finalizeTurn(
-      state,
-      {
-        kind: 'clarify',
-        message:
-          '로컬 AI(Ollama)에 연결되지 않았어요. 규칙 제안·장보기·재고·식단은 그대로 쓸 수 있어요. Ollama를 켠 뒤 더보기에서 연결을 확인하거나, “휴지 사야 해”처럼 짧게 말씀해 주세요.',
-      },
-      { engine: 'offline' },
-    );
   }
 
   const context = buildHouseholdContext(state);
   const system = buildSystemPrompt(context);
-  const prompt = `${system}\n\n사용자: ${text}\n\nJSON:`;
+  const ollamaPrompt = `${system}\n\n사용자: ${text}\n\nJSON:`;
 
   try {
-    const completion = await provider.complete({
-      prompt,
-      format: 'json',
-      numPredict: 768,
-      temperature: 0.1,
-    });
+    let completion;
+    if (typeof provider.completeConversation === 'function') {
+      completion = await provider.completeConversation({
+        userText: text,
+        state,
+        ollamaCompleteArgs: {
+          prompt: ollamaPrompt,
+          format: 'json',
+          numPredict: 768,
+          temperature: 0.1,
+        },
+      });
+    } else {
+      const probe = await provider.probe();
+      if (probe.status !== 'ready') {
+        if (local) return { ...finalizeTurn(state, local, { engine: 'local-offline' }), route: null };
+        return {
+          ...finalizeTurn(
+            state,
+            {
+              kind: 'clarify',
+              message:
+                'AI에 연결되지 않았어요. 규칙 제안·장보기·재고·식단은 그대로 쓸 수 있어요. “휴지 사야 해”처럼 짧게 말씀해 주세요.',
+            },
+            { engine: 'offline' },
+          ),
+          route: null,
+        };
+      }
+      completion = await provider.complete({
+        prompt: ollamaPrompt,
+        format: 'json',
+        numPredict: 768,
+        temperature: 0.1,
+      });
+    }
+
+    const engine =
+      completion.provider === 'groq' ? 'groq' : completion.provider === 'ollama' ? 'ollama' : 'ai';
     const parsed =
       extractJsonObject(completion.text) || extractJsonObject(extractFinalText(completion.raw || {}));
     if (!parsed) {
-      if (local) return finalizeTurn(state, local, { engine: 'local-after-parse-fail' });
-      return finalizeTurn(
-        state,
-        {
-          kind: 'clarify',
-          message:
-            'AI 응답을 해석하지 못했어요. 장보기·식단·재고 중 원하는 동작을 한 문장으로 다시 말씀해 주세요.',
-        },
-        { engine: 'ai-parse-fail' },
-      );
+      if (local) {
+        return {
+          ...finalizeTurn(state, local, { engine: 'local-after-parse-fail' }),
+          route: provider?.getRoute?.() || null,
+        };
+      }
+      return {
+        ...finalizeTurn(
+          state,
+          {
+            kind: 'clarify',
+            message:
+              'AI 응답을 해석하지 못했어요. 장보기·식단·재고 중 원하는 동작을 한 문장으로 다시 말씀해 주세요.',
+          },
+          { engine: `${engine}-parse-fail` },
+        ),
+        route: provider?.getRoute?.() || null,
+      };
     }
-    return finalizeTurn(state, parsed, { engine: 'ai' });
-  } catch (err) {
-    if (local) return finalizeTurn(state, local, { engine: 'local-after-ai-error' });
-    return finalizeTurn(
-      state,
-      {
-        kind: 'clarify',
-        message: `AI 요청에 실패했어요 (${err.message || '오류'}). 규칙 홈 제안과 장보기·재고는 계속 사용할 수 있어요.`,
+    return {
+      ...finalizeTurn(state, parsed, { engine }),
+      route: provider?.getRoute?.() || {
+        provider: completion.provider,
+        model: completion.model,
       },
-      { engine: 'ai-error' },
-    );
+    };
+  } catch (err) {
+    if (local) {
+      return {
+        ...finalizeTurn(state, local, { engine: 'local-after-ai-error' }),
+        route: provider?.getRoute?.() || null,
+      };
+    }
+    const limitKind = err.limitKind;
+    const msg =
+      limitKind === 'rpd'
+        ? '오늘 클라우드 AI 무료 한도에 도달했어요. 규칙 비서·장보기·재고는 그대로 쓸 수 있어요. (유료 전환 없음)'
+        : limitKind === 'rpm'
+          ? '클라우드 AI 분당 한도예요. 잠시 후 다시 시도하거나, “휴지 사야 해”처럼 짧게 말해 주세요.'
+          : err.code === 'unauthorized' || err.status === 401
+            ? '클라우드 AI는 로그인 후 사용할 수 있어요. 규칙 비서는 계속 동작합니다.'
+            : err.code === 'forbidden' || err.status === 403
+              ? '이 집 AI 권한이 없어요. 공용 관리자 계정으로 로그인해 주세요.'
+              : err.code === 'groq_not_configured' || err.status === 503
+                ? 'Groq 시크릿이 아직 없어요. 규칙 비서로 동작합니다.'
+                : `AI 요청에 실패했어요 (${err.message || '오류'}). 규칙 홈 제안과 장보기·재고는 계속 사용할 수 있어요.`;
+    return {
+      ...finalizeTurn(state, { kind: 'clarify', message: msg }, { engine: 'ai-error' }),
+      route: provider?.getRoute?.() || { provider: 'rules', model: '', status: 'error', message: msg },
+    };
   }
 }
