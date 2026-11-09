@@ -46,17 +46,21 @@
 - 클라이언트에는 **publishable/anon만**. `service_role`·API 시크릿은 브라우저/Git/문서에 금지.
 - 오프라인 cloud-primary: **읽기 전용** (쓰기 큐는 S5-C, 미구현·미승인).
 - 로그아웃/계정 전환 시 미러 혼합 방지.
-- 건강 수치·금융·외부 비밀번호는 동기화·저장 대상이 아니다.
 
-상세: [SUPABASE_SETUP.md](SUPABASE_SETUP.md), [S5B_SYNC.md](S5B_SYNC.md). 결정일: 2026-11-09.
+**민감·확장 데이터 정책 (현재 확정):**
+
+- **현재:** 건강 수치, 금융/계좌 정보, 외부(부모 사이트 등) 비밀번호는 Family Flow의 **동기화·영속 저장 대상이 아니다.** ActionProposal도 `sensitivity: personal_health`를 거부한다 ([ACTION_PROPOSAL.md](ACTION_PROPOSAL.md)).
+- **향후:** 건강·가계 등 도메인 추가나 관련 데이터 연동은 **별도 사용자 승인** 후에만 설계·구현한다. 승인 전까지 스키마·UI·동기화·AI 컨텍스트에 넣지 않는다. (장기 구상 목록과 혼동하지 말 것.)
+
+상세: [SUPABASE_SETUP.md](SUPABASE_SETUP.md), [S5B_SYNC.md](S5B_SYNC.md). 결정일: 2026-11-09. 확장 가능 문구 명시: 2026-11-10.
 
 ## 4. AI 계층 (현재 운영 경로)
 
-**현재 코드 경로:**
+**현재 코드 경로** (환경별 실제 도달 단계는 [ARCHITECTURE.md](ARCHITECTURE.md) §6 · [AI_PROVIDER.md](AI_PROVIDER.md)):
 
 1. 한국어 고신뢰 **로컬 패턴**
-2. **Ollama** (Vite `/api/ollama` → loopback만; Pages에는 프록시 없음; 공인 무인증 공개 금지)
-3. Ollama 불가 시 Supabase Edge **`ai-complete` → Groq 무료** (JWT + 가구 권한 + `claim_ai_quota`)
+2. **Ollama** (Vite `/api/ollama` → loopback만; **Pages에는 프록시 없음**; 공인 무인증 공개 금지)
+3. Ollama 불가 시 Supabase Edge **`ai-complete` → Groq 무료** (JWT + 가구 권한 + `claim_ai_quota`; 미로그인·가구 미연결 시 불가)
 4. 실패 시 **규칙/안내**. 유료 플랜·결제 업셀 **금지**
 
 - API 키는 Edge Secrets만. 앱 쿼터: 가구당 20 RPM · 200 RPD (문서·마이그레이션 기준).

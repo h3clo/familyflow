@@ -21,9 +21,11 @@
 
 ## 흐름
 
+라우터가 시도하는 순서(환경에 따라 중간 단계가 빠질 수 있음 — [AI_PROVIDER.md](AI_PROVIDER.md) 환경별 표):
+
 1. 한국어 고신뢰 로컬 패턴
-2. Ollama (`/api/ollama` → loopback만)
-3. Supabase Edge `ai-complete` → Groq (JWT + 가구 권한 + 쿼터)
+2. Ollama (`/api/ollama` → loopback만; **Pages에는 없음**)
+3. Supabase Edge `ai-complete` → Groq (JWT + 가구 권한 + 쿼터; 미로그인 시 불가)
 4. 규칙/안내
 
 응답은 항상 ActionProposal 검증·미리보기·승인.

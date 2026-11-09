@@ -6,8 +6,21 @@
 
 | 경로 | 상태 |
 | --- | --- |
-| 로컬 한국어 패턴 → Ollama → Groq Edge → 규칙 | **현재 코드·운영** |
+| 로컬 한국어 패턴 → (조건부) Ollama → (조건부) Groq Edge → 규칙 | **현재 코드** — 환경별 표 참고 |
 | NVIDIA NIM | 주석/과거 문서만. **어댑터·호출 없음** — 현재 사용으로 쓰지 말 것 |
+
+## 환경별 실제 AI 실행 경로
+
+라우터가 시도하는 순서와, **그 환경에서 실제로 살아 있는 단계**를 구분한다. 요약표는 [ARCHITECTURE.md](ARCHITECTURE.md) §6과 동일 취지.
+
+| 환경 | Ollama | Groq (`ai-complete`) | 그 외 |
+| --- | --- | --- | --- |
+| `npm run dev` / `npm run preview` | Vite `/api/ollama` 프록시 → **그 기기** loopback Ollama | 로그인 + 가구 연결 시 | 로컬 패턴 항상 · 실패 시 규칙 |
+| **GitHub Pages** | **없음** (정적 호스팅, 프록시 없음) | 로그인 + 가구 연결 시 | 로컬 패턴 → (Groq 불가 시) 규칙 |
+| Pages · 미로그인/가구 없음 | 없음 | **불가** (JWT·household 필요) | 로컬 패턴 → 규칙/안내 |
+| Cursor Cloud Agent VM | VM의 `:11434`만 (Mac Ollama와 다름) | 설정·세션 있을 때만 | Mac과 기본 단절 |
+
+Groq는 브라우저에 API 키를 두지 않는다. Edge가 사용자 JWT·가구·쿼터를 검사한다 (`src/ai/groq.js`).
 
 ## 원칙
 
@@ -15,7 +28,7 @@
 - AI/로컬 의도 분석은 `ActionProposal` 후보만 만들고, 저장은 S2 `previewProposal` → 승인 → `applyProposal`만 한다.
 - 모델 응답을 신뢰하지 않는다. JSON 파싱 → op 화이트리스트 → 스키마·미리보기 검증.
 - **Ollama HTTP(:11434)를 공인 인터넷에 무인증 공개하지 않는다.**
-- 클라우드 AI는 **Ollama 불가 시** Supabase Edge `ai-complete` → Groq 무료만. 유료 자동 전환 없음. 상세: `docs/AI_FAILOVER.md`.
+- 클라우드 AI는 **Ollama 불가 시**(또는 미설치 시) Supabase Edge `ai-complete` → Groq 무료만. 유료 자동 전환 없음. 상세: `docs/AI_FAILOVER.md`.
 
 ## localhost를 혼동하지 않기
 
@@ -26,15 +39,19 @@
 
 원격 에이전트가 Mac Ollama에 붙으려면 사설 LAN 브리지·터널이 필요하고, 기본 설정으로는 연결되지 않는 것이 정상이다.
 
-## Vite 개발 프록시 vs 배포
+## Vite 개발 프록시 vs Pages
 
 ```
-브라우저 → 같은 출처 /api/ollama/* → Vite dev/preview 프록시 → 127.0.0.1:11434
+[로컬 dev/preview]
+브라우저 → 같은 출처 /api/ollama/* → Vite 프록시 → 127.0.0.1:11434
+
+[GitHub Pages]
+브라우저 → /api/ollama 없음 → Ollama 단계 스킵 → (로그인 시) Edge Groq → 규칙
 ```
 
 - `npm run dev` / `npm run preview`: 프록시 동작 (`vite.config.js`).
-- 정적 GitHub Pages 등 **공개 배포에는 프록시가 없다.** AI는 로컬 개발 전제이며, 공개 배포에 Ollama를 붙이지 않는다.
-- 기본 모델: `qwen3:4b` (M2 16GB 권장).
+- **Pages에는 Ollama를 붙이지 않는다.** 공개 배포의 클라우드 AI는 Groq Edge뿐이다.
+- 기본 모델(로컬): `qwen3:4b` (M2 16GB 권장).
 
 ### 모델이 없을 때
 

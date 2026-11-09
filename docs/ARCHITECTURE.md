@@ -85,21 +85,29 @@ Supabase 마이그레이션 `supabase/migrations/`:
 
 ## 6. AI 처리 흐름 (구현됨)
 
-런타임 순서 (`src/ai/router.js`, `conversation.js`):
+라우터 시도 순서 (`src/ai/router.js`, `conversation.js`) — **환경마다 실제로 도달하는 단계가 다르다.**
 
-1. 한국어 **로컬 고신뢰 패턴** (`localIntent.js`)
-2. **Ollama** — Vite `/api/ollama` → loopback. **GitHub Pages에는 프록시 없음**
-3. Ollama 불가 시 Edge **`ai-complete` → Groq 무료** (JWT·가구·쿼터). 유료 업셀 없음
-4. 실패 시 **규칙/안내**
+1. 한국어 **로컬 고신뢰 패턴** (`localIntent.js`) — 브라우저에서 항상 가능
+2. **Ollama** — Vite `/api/ollama` → loopback (개발·preview 전용)
+3. Edge **`ai-complete` → Groq 무료** — 로그인 JWT + 가구 연결 + 쿼터 필요. 유료 업셀 없음
+4. **규칙/안내** — 위가 불가할 때
+
+| 환경 | 실제 AI 실행 경로 (코드 기준) |
+| --- | --- |
+| `npm run dev` / `npm run preview` + 로컬 Ollama | 로컬 패턴 → **Ollama** → (실패 시) Groq(로그인·가구 시) → 규칙 |
+| 로컬 dev/preview · Ollama 없음 | 로컬 패턴 → Groq(로그인·가구 시) → 규칙 |
+| **GitHub Pages** (정적 호스팅) | 로컬 패턴 → Ollama **불가**(프록시 없음) → Groq(로그인·가구 시) → 규칙 |
+| Pages · 미로그인 또는 가구 미연결 | 로컬 패턴 → (Groq 401/가구 오류) → **규칙/안내** |
+| Cursor Cloud Agent VM | VM loopback Ollama ≠ 사용자 Mac Ollama. 기본은 Mac과 단절 |
 
 모델 JSON은 신뢰하지 않는다. op 화이트리스트·`normalizeAiOp`·proposal 검증 후 미리보기.
 
 | 기술 | 상태 |
 | --- | --- |
-| 로컬 패턴 / Ollama / Groq Edge / 규칙 | **현재 운영 경로 (구현됨)** |
-| NVIDIA NIM | 코드 주석·과거 문서에만 언급. **런타임 어댑터·호출 경로 없음** (장기/과거 검토로만 취급) |
+| 로컬 패턴 / Ollama(dev) / Groq Edge / 규칙 | **현재 구현 경로** (환경별 표 참고) |
+| NVIDIA NIM | 코드 주석·과거 문서에만 언급. **런타임 어댑터·호출 경로 없음** |
 
-상세: [AI_PROVIDER.md](AI_PROVIDER.md), [AI_FAILOVER.md](AI_FAILOVER.md).
+환경별 상세·프록시: [AI_PROVIDER.md](AI_PROVIDER.md). 페일오버·쿼터: [AI_FAILOVER.md](AI_FAILOVER.md).
 
 ## 7. 배포 (구현됨)
 
