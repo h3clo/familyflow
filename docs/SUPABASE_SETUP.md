@@ -1,9 +1,32 @@
 # Family Flow · Supabase 설정 (S5-A)
 
 Haze Flow 프로젝트와 **완전히 분리**된 Family Flow 전용 프로젝트를 사용합니다.
-GitHub push·공개 배포는 하지 않습니다.
 
 동기화 동작: [S5B_SYNC.md](S5B_SYNC.md). 결정: [DECISIONS.md](DECISIONS.md) §2–3. 상태: [PROJECT_GUIDE.md](PROJECT_GUIDE.md).
+
+## Auth URL (Pages + 로컬)
+
+Supabase Dashboard → Authentication → URL Configuration에 다음을 맞춘다.
+
+| 항목 | 값 |
+| --- | --- |
+| Site URL | `https://h3clo.github.io/familyflow/` |
+| Redirect URLs | `https://h3clo.github.io/familyflow/**` |
+| Redirect URLs (로컬) | `http://127.0.0.1:5174/**` · `http://localhost:5174/**` |
+
+이메일 매직링크·OAuth 콜백이 Pages와 로컬 둘 다에서 동작하려면 위 Redirect를 **모두** 넣는다.  
+`GROQ_API_KEY`·`service_role`은 Auth URL과 무관하며 Edge Secrets / 서버에만 둔다.
+
+## GitHub Pages 빌드용 공개 시크릿
+
+저장소 Settings → Secrets and variables → Actions:
+
+| Secret 이름 | 내용 |
+| --- | --- |
+| `VITE_SUPABASE_URL` | `https://gocbvzsljkhnttcydpcv.supabase.co` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | publishable/anon **공개** 키만 |
+
+`service_role`·`GROQ_API_KEY`는 GitHub Actions 프론트 빌드 시크릿에 **넣지 않는다**.
 
 ## 현재 상태 (에이전트가 완료)
 

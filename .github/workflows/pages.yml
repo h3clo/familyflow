@@ -27,6 +27,9 @@ jobs:
       - run: npm run build
         env:
           GITHUB_ACTIONS: true
+          # Public client config only — never GROQ_API_KEY / service_role here.
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

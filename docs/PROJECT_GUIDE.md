@@ -5,15 +5,13 @@
 
 ## 현재 시작점 (2026-11-10 Asia/Seoul)
 
-**방금 완료:** Git 이력 정상화 — `cursor/history-unify-c704`에서 `origin/main`(Initial `a5c0265`)과 Family Flow tip(`f9e49f5`)을 `--allow-unrelated-histories`로 통합(merge). force·재작성·브랜치 삭제 없음.  
-- 보존 tip: `676a43e` · `5c91334` · `f9e49f5` · `178f90f` · `a5c0265` 모두 조상으로 도달 가능  
-- 충돌: `README.md` add/add만 → Family Flow README 유지 (Initial은 `# familyflow` stub)  
-- 검증: `npm test` 59 pass · `npm run build` ok  
-- **main 직접 push/병합 금지** — 통합 브랜치 → main **PR 승인 대기**
+**방금 완료:** PR #1 merge commit으로 `main` 통합 (`b2752e1`). Vite `base=/familyflow/`(GITHUB_ACTIONS) 확인. 공개 번들 실키 없음. Family Flow Supabase RLS 전원 ON·가구 멤버십 정책 확인.  
+- Pages: merge 직후 Actions **build 성공 / deploy 실패** — 저장소 Pages가 아직 비활성(API 403으로 에이전트가 켤 수 없음).  
+- 배포 URL 목표: `https://h3clo.github.io/familyflow/`
 
-**다음 행동 (한 가지):** 사용자가 위 이력 통합 PR을 **검토·병합 승인**할 때까지 `main`을 변경하지 않는다. UX/UI 재설계 구현은 **별도 승인 후** (이번 작업 범위 아님).
+**다음 행동 (한 가지):** 사용자가 GitHub Pages Source=Actions 활성화 + (권장) Actions 시크릿 `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` + Supabase Auth Site/Redirect URL을 Pages 주소에 맞춘 뒤, Pages 워크플로를 재실행해 **첫 배포를 완료**한다. UX/UI 재설계는 별도 승인 전 금지.
 
-브랜치 참고: 이력 통합 tip `cursor/history-unify-c704`. 기존 `cursor/ops-docs-p0-fbf0` / `cursor/ai-failover-normalize-fbf0`는 유지.
+브랜치 참고: 이후 Cloud Agent 작업 기준은 **`main`**.
 
 ## 구현 완료 (코드에 존재)
 
@@ -63,9 +61,10 @@
 ### P0 (지금)
 
 1. ~~운영 문서 최소 세트~~ → **완료**
-2. ~~피처 브랜치 tip 원격 보존 (`676a43e` / `5c91334`)~~ → **완료**
-3. ~~main ↔ 개발 tip 무관 이력 통합 브랜치·PR~~ → **PR 승인 대기** (`cursor/history-unify-c704`)
-4. UX 방향 사용자 승인 대기 (UI 코드 금지 유지)
+2. ~~피처 브랜치 tip 원격 보존~~ → **완료**
+3. ~~main 이력 통합 PR #1 merge~~ → **완료** (`b2752e1`)
+4. GitHub Pages 첫 배포 — **Pages 활성화·공개 Vite 시크릿·Auth URL 대기**
+5. UX 방향 사용자 승인 대기 (UI 코드 금지 유지)
 
 ### P1 (승인 후)
 
@@ -75,7 +74,6 @@
 ### P2 (별도 승인)
 
 - S5-C 오프라인 쓰기 큐
-- GitHub remote/push·Pages 배포
 - 멤버별 Auth, 건강/가계 등 신규 도메인
 
 ## 주제 문서 링크
