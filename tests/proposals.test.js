@@ -35,6 +35,7 @@ function withChickenWeek() {
 
 test('SUPPORTED_OPS documents AI-whitelist surface', () => {
   assert.ok(SUPPORTED_OPS.includes('shopping.add'));
+  assert.ok(SUPPORTED_OPS.includes('shopping.remove_unchecked'));
   assert.ok(SUPPORTED_OPS.includes('meals.replace_protein'));
 });
 

@@ -33,6 +33,7 @@ import { ProposalError } from './domain/proposals.js';
 import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
 import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
+import { runConversationTurn } from './ai/conversation.js';
 
 export function createApp(root) {
   let state = bootState();
@@ -46,6 +47,10 @@ export function createApp(root) {
   let quickDraft = null;
   /** @type {null | { proposal: object, preview: object }} */
   let pendingApproval = null;
+  /** @type {{ role: 'user'|'assistant', text: string, kind?: string, engine?: string }[]} */
+  let chatLog = [];
+  let chatBusy = false;
+  let chatDraft = '';
   /** @type {{ status: string, message: string, models: string[], reply: string, busy: boolean, installHint: string }} */
   let aiUi = {
     status: 'idle',
@@ -158,7 +163,8 @@ export function createApp(root) {
               )
               .join('')}
           </ul>
-        </section>`;
+        </section>
+        ${chatPanel()}`;
     }
 
     return `
@@ -176,6 +182,7 @@ export function createApp(root) {
           </section>`
           : ''
       }
+      ${chatPanel()}
       <section class="panel">
         <h2>지금 챙길 일</h2>
         ${
@@ -193,6 +200,32 @@ export function createApp(root) {
         </div>
         <p class="hint">변경은 미리보기 후 승인해야 저장돼요. AI 없이도 규칙으로 동작해요.</p>
       </section>`;
+  }
+
+  function chatPanel() {
+    return `<section class="panel chat-panel" aria-label="가정 비서 대화">
+      <h2>말해 보세요</h2>
+      <p class="hint">한국어로 장보기·식단·재고를 말해 주세요. AI는 제안만 하고, 승인 전에는 저장하지 않아요.</p>
+      <div class="chat-log" role="log">
+        ${
+          chatLog.length
+            ? chatLog
+                .map(
+                  (m) =>
+                    `<div class="chat-bubble ${m.role}">${esc(m.text)}${
+                      m.kind ? `<small>${esc(m.kind)}${m.engine ? ` · ${esc(m.engine)}` : ''}</small>` : ''
+                    }</div>`,
+                )
+                .join('')
+            : `<p class="empty">예: “휴지가 다 떨어졌어”, “장보기 목록 보여줘”</p>`
+        }
+      </div>
+      <form data-form="ai-chat" class="chat-form">
+        <label class="sr-only" for="chat-text">메시지</label>
+        <textarea id="chat-text" name="message" rows="2" maxlength="500" placeholder="무엇을 도와드릴까요?" ${chatBusy ? 'disabled' : ''}>${esc(chatDraft)}</textarea>
+        <button type="submit" class="primary" ${chatBusy ? 'disabled' : ''}>${chatBusy ? '생각 중…' : '보내기'}</button>
+      </form>
+    </section>`;
   }
 
   function approvalPanel({ proposal, preview }) {
@@ -513,6 +546,54 @@ export function createApp(root) {
         render();
       };
     });
+
+    const chatForm = root.querySelector('[data-form=ai-chat]');
+    if (chatForm) {
+      chatForm.onsubmit = async (e) => {
+        e.preventDefault();
+        if (chatBusy) return;
+        const fd = new FormData(chatForm);
+        const message = String(fd.get('message') || '').trim();
+        if (!message) {
+          setToast('메시지를 입력해 주세요.');
+          return;
+        }
+        chatDraft = '';
+        chatLog = [...chatLog, { role: 'user', text: message }].slice(-20);
+        chatBusy = true;
+        render();
+        try {
+          const turn = await runConversationTurn(state, message, aiProvider());
+          chatLog = [
+            ...chatLog,
+            {
+              role: 'assistant',
+              text: turn.message,
+              kind: turn.kind,
+              engine: turn.engine,
+            },
+          ].slice(-20);
+          if (turn.kind === 'proposal' && turn.proposal && turn.preview) {
+            pendingApproval = { proposal: turn.proposal, preview: turn.preview };
+          }
+        } catch (err) {
+          chatLog = [
+            ...chatLog,
+            {
+              role: 'assistant',
+              text: err.message || '대화 처리에 실패했어요. 규칙 기능은 그대로 쓸 수 있어요.',
+              kind: 'clarify',
+              engine: 'error',
+            },
+          ].slice(-20);
+        } finally {
+          chatBusy = false;
+          render();
+          const logEl = root.querySelector('.chat-log');
+          if (logEl) logEl.scrollTop = logEl.scrollHeight;
+        }
+      };
+    }
 
     root.querySelectorAll('[data-act=preview-suggestion]').forEach((btn) => {
       btn.onclick = () => {

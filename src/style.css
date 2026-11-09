@@ -297,6 +297,47 @@ details summary { cursor: pointer; font-weight: 600; }
   gap: 8px;
   margin-bottom: 8px;
 }
+.chat-panel .chat-log {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  margin: 10px 0 12px;
+  padding: 4px;
+}
+.chat-bubble {
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.chat-bubble small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.chat-bubble.user {
+  background: color-mix(in srgb, var(--brand) 16%, var(--card));
+  justify-self: end;
+  max-width: 92%;
+}
+.chat-bubble.assistant {
+  background: color-mix(in srgb, var(--muted) 10%, var(--card));
+  border: 1px solid var(--line);
+  justify-self: start;
+  max-width: 96%;
+}
+.chat-form {
+  display: grid;
+  gap: 8px;
+}
+.chat-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 64px;
+}
 
 .tabbar {
   position: fixed;

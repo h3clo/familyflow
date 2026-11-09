@@ -94,23 +94,28 @@ export function createOllamaProvider(options = {}) {
       }
     },
 
-    async complete({ prompt, model, signal } = {}) {
+    async complete({ prompt, model, signal, format, numPredict, temperature } = {}) {
       const useModel = model || preferredModel;
+      const body = {
+        model: useModel,
+        prompt: String(prompt || ''),
+        stream: false,
+        // qwen3 family may still emit brief reasoning; strip below.
+        think: false,
+        options: {
+          temperature: typeof temperature === 'number' ? temperature : 0.1,
+          num_predict: Number.isFinite(numPredict) ? numPredict : 256,
+        },
+      };
+      if (format) body.format = format;
       const res = await request('/api/generate', {
         method: 'POST',
         signal,
-        body: JSON.stringify({
-          model: useModel,
-          prompt: String(prompt || ''),
-          stream: false,
-          // qwen3 family may still emit brief reasoning; strip below.
-          think: false,
-          options: { temperature: 0.1, num_predict: 256 },
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`Ollama 생성 실패 (HTTP ${res.status}) ${body.slice(0, 120)}`);
+        const bodyText = await res.text().catch(() => '');
+        throw new Error(`Ollama 생성 실패 (HTTP ${res.status}) ${bodyText.slice(0, 120)}`);
       }
       const data = await res.json();
       const text = extractFinalText(data);

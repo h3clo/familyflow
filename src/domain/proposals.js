@@ -8,7 +8,7 @@
  */
 
 import { uid } from '../lib/id.js';
-import { ensureActiveList, addShoppingItem } from './shopping.js';
+import { ensureActiveList, addShoppingItem, removeShoppingItem } from './shopping.js';
 import { setInventoryStatus, upsertInventory } from './inventory.js';
 import { draftWeek } from './meals.js';
 
@@ -17,6 +17,7 @@ export const PROPOSAL_SCHEMA_VERSION = 1;
 /** Whitelist for rules + future Ollama structured output. */
 export const SUPPORTED_OPS = Object.freeze([
   'shopping.add',
+  'shopping.remove_unchecked',
   'inventory.set_status',
   'inventory.upsert',
   'meals.confirm_dinner',
@@ -304,6 +305,21 @@ function describeAndApplyOp(draft, { op, payload }) {
       estimatedPrice: payload.estimatedPrice ?? null,
     });
     return `장보기 추가: ${name} ${qty}${unit} (${priority === 'must' ? '필수' : '선택'})`;
+  }
+
+  if (op === 'shopping.remove_unchecked') {
+    const name = String(payload.name || '').trim();
+    if (!name) throw new ProposalError('뺄 장보기 품목 이름이 필요해요.');
+    const matches = (list.items || []).filter(
+      (i) => !i.checked && normalizeName(i.name) === normalizeName(name),
+    );
+    if (!matches.length) {
+      throw new ProposalError(`장보기 목록에 미구매 ‘${name}’이(가) 없어요.`, { code: 'not_found' });
+    }
+    for (const item of matches) {
+      removeShoppingItem(list, item.id);
+    }
+    return `장보기에서 제거: ${name} (${matches.length}개)`;
   }
 
   if (op === 'inventory.set_status') {

@@ -28,5 +28,5 @@
 - S1 제안 엔진 + 홈 화면 (규칙만) ✅
 - S2 ActionProposal 승인 UX ✅ (`docs/ACTION_PROPOSAL.md`, 미리보기→승인→원자 저장)
 - S3 AI provider 인터페이스 + Ollama 스모크 ✅ (`docs/AI_PROVIDER.md`, 더보기 연결 테스트, `/api/ollama` 프록시)
-- S4 대화 → proposal 변환
+- S4 대화 → proposal 변환 ✅ (홈 「말해 보세요」, 스키마 검증 후 승인)
 - S5 이후: 패턴 학습 강화, Supabase, 배포 (승인 후)
