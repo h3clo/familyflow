@@ -1,7 +1,8 @@
 # ActionProposal 스키마 (S2)
 
-규칙 엔진과 향후 Ollama/NIM AI는 **도메인 상태를 직접 바꾸지 않고** 이 JSON만 제출한다.  
-앱은 `previewProposal` → 사용자 승인 → `applyProposal` 순으로만 저장한다.
+규칙 엔진과 AI(현재: 로컬 패턴 · Ollama · Groq Edge)는 **도메인 상태를 직접 바꾸지 않고** 이 JSON만 제출한다.  
+앱은 `previewProposal` → 사용자 승인 → `applyProposal` 순으로만 저장한다.  
+(NVIDIA NIM은 현재 런타임 경로가 아니다 — [DECISIONS.md](DECISIONS.md) §4.)
 
 정책 요약: [DECISIONS.md](DECISIONS.md) §5.
 

@@ -1,26 +1,27 @@
 # Family Flow — AI 작업 규칙
 
-이 저장소(`/agent/repos/familyflow`)만 작업 대상이다.  
-시작 시 **반드시** `docs/PROJECT_GUIDE.md`의 **현재 시작점**과 `docs/DECISIONS.md`를 읽는다. 상세 주제 문서는 해당 작업에 필요할 때만 연다.
+이 저장소(`h3clo/familyflow`)만 작업 대상이다.  
+시작 시 **반드시** `docs/PROJECT_GUIDE.md`의 **현재 시작점**과 `docs/DECISIONS.md`를 읽는다. 구조 복원이 필요하면 `docs/ARCHITECTURE.md`. 상세 주제 문서는 해당 작업에 필요할 때만 연다.
 
-## Haze Flow와 분리
+## Haze Flow와 분리 (현재) · 연동 (장기 검토만)
 
-- **Haze Flow를 읽거나 수정하지 않는다.** (코드·문서·DB·설정·배포 포함)
+- **Haze Flow를 읽거나 수정하지 않는다.** (코드·문서·DB·설정·배포 포함) — 승인 전까지 절대.
 - Family Flow는 별도 앱·별도 Supabase 프로젝트·별도 로컬 포트다.
 - 로컬 개발 기본 URL: `http://127.0.0.1:5174/` (`npm run dev`, 포트 **5174**). Haze(5173)와 혼동하지 않는다.
-- GitHub push·Pages 배포·운영 계정 변경은 **사용자 승인 후**만 한다. 이 저장소에 remote가 없거나 push 금지 지시가 있으면 로컬 커밋까지만 한다.
+- **장기:** 선택적 데이터 연동 가능성은 [ARCHITECTURE.md](docs/ARCHITECTURE.md) §8·[DECISIONS.md](docs/DECISIONS.md) §1에만 적어 둔다. 공통 DB·계정 통합을 지금 구현하지 않는다.
+- GitHub push·Pages 설정 변경·운영 계정 변경은 **사용자 승인 후**만 한다.
 
 ## 제품 한 줄
 
-Family Flow는 **우리 집** 가정 운영 비서다. 개인 생산성/운동 앱(Haze)이 아니다.  
+Family Flow는 **우리 집** 가정 운영 도우미다. 개인 생산성/운동 앱(Haze)이 아니다.  
 목표는 입력량을 늘리는 것이 아니라, 가족을 챙기는 **판단·조작 부담을 줄이는 것**이다.  
-기준: `docs/PRODUCT_DIRECTION.md`, 확정 결정: `docs/DECISIONS.md`.
+기준: `docs/PRODUCT_DIRECTION.md`, 확정 결정: `docs/DECISIONS.md`, UX 원칙: `docs/DESIGN_SYSTEM.md`.
 
 ## 작업 범위와 승인
 
 - **“이어서” / 막연한 위임** = `PROJECT_GUIDE` 현재 시작점의 **가장 작은 검증 가능 묶음**만 실행. 새 기능 발명·전면 UI 교체·실계정 조작은 자동 승인되지 않는다.
 - 이미 문서에 있는 결정은 재질문하지 않는다. 되돌리기 어려운 선택(데이터 삭제, 비용, 권한 확대, 큰 UX 변경)만 사용자 결정을 받는다.
-- 사용자가 **설계만 / 코드 금지**라고 하면 구현하지 않는다. 승인 전에는 UI·도메인·DB·배포를 바꾸지 않는다.
+- 사용자가 **설계만 / 코드 금지 / 문서만**이라고 하면 그에 따른다. 승인 전에는 UI·도메인·DB·배포 동작을 바꾸지 않는다.
 - 비밀키·토큰·계정 비밀번호·개인 기록을 문서·커밋·채팅 로그에 남기지 않는다. `.env.local`과 Edge Secrets만 사용한다.
 
 ## 데이터·기능 보존
@@ -33,8 +34,10 @@ Family Flow는 **우리 집** 가정 운영 비서다. 개인 생산성/운동 �
 ## 검증 원칙
 
 - 코드 변경 시 기본: 관련 테스트 → 커밋 전 `npm test` · `npm run build` · `git diff --check`.
-- 사용자는 UX 판단만 한다. 기술 QA(“눌러 보세요”, “동기화 확인해 주세요”)를 사용자에게 넘기지 않는다.
+- 테스트 **통과 개수를 프로젝트 고정 규칙처럼 문서에 박지 않는다.** 시점마다 명령을 다시 실행한다.
+- 사용자는 UX 판단만 한다. 기술 QA를 사용자에게 넘기지 않는다.
 - 미검증은 완료로 쓰지 않는다. `PROJECT_GUIDE`에 **구현됨 / 검증됨 / 미검증**을 구분한다.
+- 문서만 변경한 PR은 앱 코드 diff가 없는지 확인한다.
 
 ## Subagent · computerUse
 
@@ -50,6 +53,9 @@ Family Flow는 **우리 집** 가정 운영 비서다. 개인 생산성/운동 �
 | `AGENTS.md` (본 파일) | 작업 규칙·금지·검증·도구 사용 |
 | `docs/PROJECT_GUIDE.md` | **지금** 상태·시작점·대기열·갱신 규칙 |
 | `docs/DECISIONS.md` | **확정된** 제품/기술 결정 (변경 시에만 수정) |
+| `docs/ARCHITECTURE.md` | 구조·데이터·인증·sync·AI·외부 연동 검토 |
+| `docs/DESIGN_SYSTEM.md` | 승인 UX 원칙 vs 미확정 시각/IA |
+| `docs/handoff-history.md` | 긴 인계·복구 이력 |
 | `docs/*.md` (주제) | Proposal·AI·Sync·Supabase 등 상세 |
 | `README.md` | 사람용 실행 안내 + 위 문서로 링크 |
 

@@ -1,6 +1,13 @@
 # AI Provider · Ollama (S3–S4)
 
-페일오버·쿼터: [AI_FAILOVER.md](AI_FAILOVER.md). 결정 요약: [DECISIONS.md](DECISIONS.md) §4.
+페일오버·쿼터: [AI_FAILOVER.md](AI_FAILOVER.md). 결정 요약: [DECISIONS.md](DECISIONS.md) §4. 구조: [ARCHITECTURE.md](ARCHITECTURE.md) §6.
+
+## 현재 운영 vs 과거 검토
+
+| 경로 | 상태 |
+| --- | --- |
+| 로컬 한국어 패턴 → Ollama → Groq Edge → 규칙 | **현재 코드·운영** |
+| NVIDIA NIM | 주석/과거 문서만. **어댑터·호출 없음** — 현재 사용으로 쓰지 말 것 |
 
 ## 원칙
 
