@@ -112,9 +112,9 @@ as $$
   );
 $$;
 
-revoke all on function public.is_household_member(uuid) from public;
-revoke all on function public.can_edit_household(uuid) from public;
-revoke all on function public.is_household_owner(uuid) from public;
+revoke all on function public.is_household_member(uuid) from public, anon;
+revoke all on function public.can_edit_household(uuid) from public, anon;
+revoke all on function public.is_household_owner(uuid) from public, anon;
 grant execute on function public.is_household_member(uuid) to authenticated;
 grant execute on function public.can_edit_household(uuid) to authenticated;
 grant execute on function public.is_household_owner(uuid) to authenticated;
@@ -162,7 +162,7 @@ begin
 end;
 $$;
 
-revoke all on function public.create_household(text, integer) from public;
+revoke all on function public.create_household(text, integer) from public, anon;
 grant execute on function public.create_household(text, integer) to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -202,7 +202,7 @@ begin
 end;
 $$;
 
-revoke all on function public.create_household_invite(uuid, text, integer) from public;
+revoke all on function public.create_household_invite(uuid, text, integer) from public, anon;
 grant execute on function public.create_household_invite(uuid, text, integer) to authenticated;
 
 create or replace function public.accept_household_invite(p_code text, p_display_name text default null)
@@ -256,7 +256,7 @@ begin
 end;
 $$;
 
-revoke all on function public.accept_household_invite(text, text) from public;
+revoke all on function public.accept_household_invite(text, text) from public, anon;
 grant execute on function public.accept_household_invite(text, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
