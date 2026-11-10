@@ -362,6 +362,7 @@ function pickPreferredSauce(pool, protein) {
   if (/닭/.test(protein || '')) {
     const garlicSoy = pool.find((s) => /간장마늘|마늘\s*간장|마늘간장/.test(s.name));
     if (garlicSoy) return garlicSoy;
+    // Prefer olive-oil nutmeg label; still accept legacy butter-named rows.
     const nutmeg = pool.find((s) => /넛맥|육두구/.test(s.name));
     if (nutmeg) return nutmeg;
   }

@@ -10,7 +10,7 @@ const state = {
   sauces: [
     { id: 's1', name: '마늘 간장 소스', visualKey: 'garlic-soy', forPatterns: ['야채찜'] },
     { id: 's2', name: '간장마늘 양념', visualKey: 'garlic-soy', forPatterns: ['야채구이'] },
-    { id: 's3', name: '넛맥 버터 시즈닝', visualKey: 'nutmeg', forPatterns: ['야채구이'] },
+    { id: 's3', name: '넛맥 올리브유 시즈닝', visualKey: 'nutmeg', forPatterns: ['야채구이'] },
   ],
 };
 
@@ -27,7 +27,7 @@ test('maps 야채찜 + garlic soy to prebaked steam composite', () => {
 test('maps 야채구이 + nutmeg to prebaked roast composite', () => {
   const v = resolveDinnerVisual(state, {
     patternName: '야채구이',
-    sauceName: '넛맥 버터 시즈닝',
+    sauceName: '넛맥 올리브유 시즈닝',
   });
   assert.match(v.imageSrc, /dinner\/roast-nutmeg\.jpg\?v=/);
 });

@@ -200,7 +200,7 @@ test('migrateState still boots after bootstrap helpers (no schema wipe side effe
   raw.version = 6;
   const migrated = migrateState(raw);
   assert.ok(migrated);
-  assert.equal(migrated.version, 8);
+  assert.equal(migrated.version, 9);
   assert.ok(Array.isArray(migrated.cookingPatterns));
   assert.ok(Array.isArray(migrated.sauces));
 });

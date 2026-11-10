@@ -67,7 +67,7 @@ test('buildSyncableFootprint ignores default owner-only seed member', () => {
       { name: '간장마늘 양념' },
       { name: '양꼬치 양념' },
       { name: '허니머스터드 소스' },
-      { name: '넛맥 버터 시즈닝' },
+      { name: '넛맥 올리브유 시즈닝' },
     ],
   });
   assert.equal(fp.transactional, 0);
