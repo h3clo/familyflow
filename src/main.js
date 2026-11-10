@@ -1,8 +1,13 @@
 import './style.css';
 import { createApp } from './app.js';
 import { watchAppUpdates } from './lib/appUpdate.js';
+import { installScrollTopGuards, pinWindowTop } from './lib/scrollLock.js';
+
+// Kill iOS phantom scroll-before-paint / scroll restoration.
+installScrollTopGuards();
 
 createApp(document.querySelector('#app'));
+pinWindowTop({ force: true });
 
 // Home-screen (Safari) PWAs: detect new Pages builds without a manual clear URL.
 watchAppUpdates();
