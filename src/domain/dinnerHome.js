@@ -239,85 +239,93 @@ export function listDinnerCandidates(state) {
       const saucePool = pattern
         ? sauces.filter((s) => (s.forPatterns || []).includes(pattern.name))
         : [];
-      const sauce =
-        pickPreferredSauce(saucePool, source.name) || (!saucePool.length ? sauces[0] : null) || null;
+      // One candidate per pattern×sauce so 「바꾸기」 cycles hero photos (not just protein).
+      // Soft preference only reorders — it must not collapse every row onto garlic-soy.
+      const preferred = pickPreferredSauce(saucePool, source.name);
+      const sauceChoices = saucePool.length
+        ? preferred
+          ? [preferred, ...saucePool.filter((s) => s.id !== preferred.id)]
+          : saucePool
+        : [sauces[0] || null];
 
-      const recent = recentProteins.has(normalize(source.name));
-      const effort = pattern?.effort || null;
-      const reasons = [];
-      const unknowns = [];
+      for (const sauce of sauceChoices) {
+        const recent = recentProteins.has(normalize(source.name));
+        const effort = pattern?.effort || null;
+        const reasons = [];
+        const unknowns = [];
 
-      if (source.stockStatus === 'enough') reasons.push(`재고 확인 · ${source.name} 충분`);
-      if (source.stockStatus === 'low') reasons.push(`재고 확인 · ${source.name} 부족`);
-      if (source.stockStatus === 'out') reasons.push(`재고 확인 · ${source.name} 없음`);
-      if (source.stockStatus === 'untracked') {
-        reasons.push(UNTRACKED_STOCK_LABEL);
-        unknowns.push(`${source.name} 재고는 아직 확인하지 않음`);
-      }
+        if (source.stockStatus === 'enough') reasons.push(`재고 확인 · ${source.name} 충분`);
+        if (source.stockStatus === 'low') reasons.push(`재고 확인 · ${source.name} 부족`);
+        if (source.stockStatus === 'out') reasons.push(`재고 확인 · ${source.name} 없음`);
+        if (source.stockStatus === 'untracked') {
+          reasons.push(UNTRACKED_STOCK_LABEL);
+          unknowns.push(`${source.name} 재고는 아직 확인하지 않음`);
+        }
 
-      if (effort === 'low') reasons.push('조리 부담 낮음');
-      else if (effort === 'medium') reasons.push('조리 부담 보통');
-      else if (effort === 'high') reasons.push('조리 부담 높음');
+        if (effort === 'low') reasons.push('조리 부담 낮음');
+        else if (effort === 'medium') reasons.push('조리 부담 보통');
+        else if (effort === 'high') reasons.push('조리 부담 높음');
 
-      if (recent) reasons.push('최근 같은 재료 · 다른 후보도 볼 수 있어요');
-      else if (recentProteins.size) reasons.push('최근 식단에 안 나온 재료');
+        if (recent) reasons.push('최근 같은 재료 · 다른 후보도 볼 수 있어요');
+        else if (recentProteins.size) reasons.push('최근 식단에 안 나온 재료');
 
-      let shopping = null;
-      if (source.stockStatus === 'out' || source.stockStatus === 'low') {
-        shopping = {
-          name: source.name,
-          quantity: 1,
-          unit: guessUnit(source.name),
-          inventoryId: source.inventoryId,
-        };
-        reasons.push(
-          source.stockStatus === 'out'
-            ? `장보기 제안 · ${source.name} (없음)`
-            : `장보기 제안 · ${source.name} (부족)`,
+        let shopping = null;
+        if (source.stockStatus === 'out' || source.stockStatus === 'low') {
+          shopping = {
+            name: source.name,
+            quantity: 1,
+            unit: guessUnit(source.name),
+            inventoryId: source.inventoryId,
+          };
+          reasons.push(
+            source.stockStatus === 'out'
+              ? `장보기 제안 · ${source.name} (없음)`
+              : `장보기 제안 · ${source.name} (부족)`,
+          );
+        }
+
+        if (sauce) {
+          unknowns.push(`소스(${sauce.name}) 재료 재고는 확인하지 않음`);
+        }
+
+        const title = formatDinnerOfferTitle({
+          patternName: pattern?.name || '',
+          sauceName: sauce?.name || '',
+          protein: source.name,
+        });
+        const score = scoreDinnerCandidate(
+          {
+            stockStatus: source.stockStatus,
+            effort,
+            protein: source.name,
+            patternName: pattern?.name || '',
+            recent,
+          },
+          prefs,
         );
-      }
 
-      if (sauce) {
-        unknowns.push(`소스(${sauce.name}) 재료 재고는 확인하지 않음`);
-      }
+        if (score.preferenceKind === 'like') reasons.push('가족 취향 · 맞춤');
+        else if (score.preferenceKind === 'dislike') reasons.push('가족 취향 · 비선호 신호');
+        else if (score.preferenceKind === 'conflict') reasons.push('가족 취향 · 선호 충돌(신중)');
 
-      const title = formatDinnerOfferTitle({
-        patternName: pattern?.name || '',
-        sauceName: sauce?.name || '',
-        protein: source.name,
-      });
-      const score = scoreDinnerCandidate(
-        {
+        candidates.push({
+          key: `${source.keyId}-${pattern?.id || 'none'}-${sauce?.id || 'none'}`,
+          title,
+          protein: source.name,
+          inventoryId: source.inventoryId,
+          patternId: pattern?.id || null,
+          patternName: pattern?.name || '',
+          sauceId: sauce?.id || null,
+          sauceName: sauce?.name || '',
+          reasons,
+          unknowns,
+          shopping,
           stockStatus: source.stockStatus,
           effort,
-          protein: source.name,
-          patternName: pattern?.name || '',
           recent,
-        },
-        prefs,
-      );
-
-      if (score.preferenceKind === 'like') reasons.push('가족 취향 · 맞춤');
-      else if (score.preferenceKind === 'dislike') reasons.push('가족 취향 · 비선호 신호');
-      else if (score.preferenceKind === 'conflict') reasons.push('가족 취향 · 선호 충돌(신중)');
-
-      candidates.push({
-        key: `${source.keyId}-${pattern?.id || 'none'}-${sauce?.id || 'none'}`,
-        title,
-        protein: source.name,
-        inventoryId: source.inventoryId,
-        patternId: pattern?.id || null,
-        patternName: pattern?.name || '',
-        sauceId: sauce?.id || null,
-        sauceName: sauce?.name || '',
-        reasons,
-        unknowns,
-        shopping,
-        stockStatus: source.stockStatus,
-        effort,
-        recent,
-        score,
-      });
+          score,
+        });
+      }
     }
   }
 
@@ -356,7 +364,10 @@ function guessUnit(name) {
   return '개';
 }
 
-/** Prefer sensible defaults from the household sauce catalog. */
+/**
+ * Soft preference only (ordering hint). Do not collapse every protein onto garlic-soy —
+ * that made 「바꾸기」 show just roast/steam garlic photos despite 12 prebakes on disk.
+ */
 function pickPreferredSauce(pool, protein) {
   if (!pool?.length) return null;
   if (/닭/.test(protein || '')) {
@@ -370,7 +381,5 @@ function pickPreferredSauce(pool, protein) {
     const lamb = pool.find((s) => /양꼬치|쯔란/.test(s.name));
     if (lamb) return lamb;
   }
-  const garlic = pool.find((s) => /마늘\s*간장|마늘간장|간장마늘/.test(s.name));
-  if (garlic) return garlic;
-  return pool[0];
+  return null;
 }

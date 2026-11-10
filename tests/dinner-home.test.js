@@ -5,7 +5,10 @@ import {
   formatDinnerOfferTitle,
   listDinnerCandidates,
 } from '../src/domain/dinnerHome.js';
+import { resolveDinnerVisual } from '../src/domain/dinnerVisual.js';
 import { previewProposal, applyProposal } from '../src/domain/proposals.js';
+import { createEmptyState } from '../src/domain/state.js';
+import { seedState } from '../src/domain/seed.js';
 
 function baseState(inventory = []) {
   return {
@@ -111,6 +114,16 @@ test('prefers household default sauces for roast chicken', () => {
   assert.equal(roast.sauceName, '간장마늘 양념');
   const steam = listDinnerCandidates(state).find((c) => c.patternName === '야채찜');
   assert.equal(steam.sauceName, '마늘 간장 소스');
+});
+
+test('starter candidates expose many pattern×sauce hero photos, not only garlic-soy', () => {
+  const state = seedState(createEmptyState());
+  const list = listDinnerCandidates(state);
+  const files = new Set(
+    list.map((c) => (resolveDinnerVisual(state, c).imageSrc || '').replace(/\?.*$/, '').split('/').pop()),
+  );
+  assert.ok(files.size >= 8, `expected many prebakes in rotation, got ${[...files]}`);
+  assert.ok([...files].some((f) => f.includes('tomato') || f.includes('buchujang') || f.includes('sriracha')));
 });
 
 test('out-of-stock protein includes shopping.add in proposal', () => {
