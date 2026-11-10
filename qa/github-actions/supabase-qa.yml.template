@@ -1,0 +1,64 @@
+# Copy to .github/workflows/supabase-qa.yml and wire repository secrets.
+# See docs/SUPABASE_QA.md
+
+name: Supabase QA
+
+on:
+  workflow_dispatch:
+  # Uncomment after QA secrets + accounts are ready:
+  # schedule:
+  #   - cron: '0 15 * * 1'  # weekly Mon 15:00 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-qa:
+    name: live-supabase-qa
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+
+      - name: Gate on QA secrets
+        id: gate
+        env:
+          SUPABASE_QA_URL: ${{ secrets.SUPABASE_QA_URL }}
+          SUPABASE_QA_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_QA_PUBLISHABLE_KEY }}
+          SUPABASE_QA_USER_A_EMAIL: ${{ secrets.SUPABASE_QA_USER_A_EMAIL }}
+          SUPABASE_QA_USER_A_PASSWORD: ${{ secrets.SUPABASE_QA_USER_A_PASSWORD }}
+        run: |
+          if [ -z "$SUPABASE_QA_URL" ] || [ -z "$SUPABASE_QA_PUBLISHABLE_KEY" ] || [ -z "$SUPABASE_QA_USER_A_EMAIL" ] || [ -z "$SUPABASE_QA_USER_A_PASSWORD" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=실제 서버 미검증::SUPABASE_QA_* secrets are not configured. Live QA skipped."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Live Supabase QA
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          SUPABASE_QA_URL: ${{ secrets.SUPABASE_QA_URL }}
+          SUPABASE_QA_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_QA_PUBLISHABLE_KEY }}
+          SUPABASE_QA_USER_A_EMAIL: ${{ secrets.SUPABASE_QA_USER_A_EMAIL }}
+          SUPABASE_QA_USER_A_PASSWORD: ${{ secrets.SUPABASE_QA_USER_A_PASSWORD }}
+          SUPABASE_QA_USER_B_EMAIL: ${{ secrets.SUPABASE_QA_USER_B_EMAIL }}
+          SUPABASE_QA_USER_B_PASSWORD: ${{ secrets.SUPABASE_QA_USER_B_PASSWORD }}
+        run: npm run test:qa
+
+      - name: Mark live QA skipped
+        if: steps.gate.outputs.configured != 'true'
+        run: |
+          echo "실제 서버 미검증 — configure SUPABASE_QA_* repository secrets, then re-run."
