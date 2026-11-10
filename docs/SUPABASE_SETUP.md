@@ -2,7 +2,8 @@
 
 Haze Flow와 **현재 분리된** Family Flow 전용 프로젝트를 사용합니다. (장기 선택 연동은 [ARCHITECTURE.md](ARCHITECTURE.md) §8 · 지금 구현 없음)
 
-동기화: [S5B_SYNC.md](S5B_SYNC.md). 결정: [DECISIONS.md](DECISIONS.md) §2–3. 상태: [PROJECT_GUIDE.md](PROJECT_GUIDE.md).
+동기화: [S5B_SYNC.md](S5B_SYNC.md). 결정: [DECISIONS.md](DECISIONS.md) §2–3. 상태: [PROJECT_GUIDE.md](PROJECT_GUIDE.md).  
+실서버 QA·Actions: [SUPABASE_QA.md](SUPABASE_QA.md).
 
 ## Auth URL (Pages + 로컬)
 
