@@ -91,15 +91,18 @@ test('localStateToCloudRows includes family_profiles', () => {
   assert.equal(rows.familyProfiles[0].display_name, '아빠');
 });
 
-test('state migrates to v6 cloud mode + roleLabel', () => {
+test('state migrates through v6 cloud mode and v7 food hub', () => {
   const raw = createEmptyState();
   raw.version = 5;
   delete raw.cloud.mode;
   raw.members = [{ id: 'x', displayName: '나', role: 'owner' }];
+  raw.settings.view = 'shopping';
   const m = migrateState(raw);
-  assert.equal(m.version, 6);
+  assert.equal(m.version, 7);
   assert.equal(m.cloud.mode, 'local');
   assert.equal(m.members[0].roleLabel, '관리자');
+  assert.equal(m.settings.view, 'food');
+  assert.equal(m.settings.foodSegment, 'shopping');
 });
 
 test('sync badge labels cover statuses', () => {

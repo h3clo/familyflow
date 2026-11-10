@@ -32,6 +32,7 @@ import {
 import { ProposalError } from './domain/proposals.js';
 import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
 import { buildDinnerHomeOffer } from './domain/dinnerHome.js';
+import { nextFoodAction, normalizeFoodNav } from './domain/foodHub.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
 import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
 import { runConversationTurn } from './ai/conversation.js';
@@ -63,6 +64,12 @@ export function createApp(root) {
   let state = bootPrefersScopedCache(bootState());
   ensureActiveList(state);
   if (!state.settings.view) state.settings.view = 'home';
+  if (!state.settings.foodSegment) state.settings.foodSegment = 'shopping';
+  {
+    const nav = normalizeFoodNav(state.settings.view, state.settings.foodSegment);
+    state.settings.view = nav.view;
+    state.settings.foodSegment = nav.foodSegment;
+  }
   if (!state.cloud) {
     state.cloud = {
       householdId: null,
@@ -294,7 +301,10 @@ export function createApp(root) {
   };
 
   function render() {
-    const view = state.settings.view || 'home';
+    const nav = normalizeFoodNav(state.settings.view || 'home', state.settings.foodSegment);
+    state.settings.view = nav.view;
+    state.settings.foodSegment = nav.foodSegment;
+    const view = state.settings.view;
     const authGate = needsCloudAuthGate({
       configured: cloudCfg.configured,
       user: cloudUi.user,
@@ -329,13 +339,11 @@ export function createApp(root) {
               ? authGateView()
               : view === 'home'
                 ? homeView()
-                : view === 'shopping'
-                  ? shoppingView()
-                  : view === 'inventory'
-                    ? inventoryView()
-                    : view === 'meals'
-                      ? mealsView()
-                      : moreView()
+                : view === 'food'
+                  ? foodView()
+                  : view === 'family'
+                    ? familyView()
+                    : moreView()
           }
         </main>
         ${toast ? `<div class="toast" role="status">${esc(toast)}</div>` : ''}
@@ -344,9 +352,8 @@ export function createApp(root) {
             ? ''
             : `<nav class="tabbar" aria-label="주요 메뉴">
           ${tab('home', '홈')}
-          ${tab('shopping', '장보기')}
-          ${tab('inventory', '재고')}
-          ${tab('meals', '식단')}
+          ${tab('food', '식생활')}
+          ${tab('family', '가족')}
           ${tab('more', '더보기')}
         </nav>`
         }
@@ -374,13 +381,82 @@ export function createApp(root) {
   }
 
   function viewTitle(view) {
+    if (view === 'food') {
+      const seg = state.settings.foodSegment || 'shopping';
+      return { shopping: '식생활 · 장보기', inventory: '식생활 · 재고', meals: '식생활 · 식단' }[seg] || '식생활';
+    }
     return {
       home: '오늘 챙길 일',
-      shopping: '이번 장보기',
-      inventory: '재고',
-      meals: '식단',
-      more: 'Family Flow',
+      food: '식생활',
+      family: '가족',
+      more: '더보기',
+      shopping: '식생활 · 장보기',
+      inventory: '식생활 · 재고',
+      meals: '식생활 · 식단',
     }[view];
+  }
+
+  function foodView() {
+    const next = nextFoodAction(state);
+    const seg = state.settings.foodSegment || next.segment || 'shopping';
+    const segments = [
+      { id: 'shopping', label: '장보기' },
+      { id: 'inventory', label: '재고' },
+      { id: 'meals', label: '식단' },
+    ];
+    return `
+      <section class="panel food-coach" aria-label="지금 할 일">
+        <p class="label">불편해지기 전에 먼저</p>
+        <h2>${esc(next.title)}</h2>
+        <p class="hint">${esc(next.hint)}</p>
+        ${
+          next.segment !== seg
+            ? `<button type="button" class="primary block" data-nav="food" data-segment="${next.segment}">${esc(next.cta)}</button>`
+            : `<p class="hint">아래에 바로 이어서 하면 돼요.</p>`
+        }
+      </section>
+      <div class="food-segments" role="tablist" aria-label="식생활 구분">
+        ${segments
+          .map(
+            (s) =>
+              `<button type="button" role="tab" class="food-seg ${seg === s.id ? 'on' : ''}" data-nav="food" data-segment="${s.id}" aria-selected="${seg === s.id ? 'true' : 'false'}">${s.label}</button>`,
+          )
+          .join('')}
+      </div>
+      ${seg === 'shopping' ? shoppingView() : seg === 'inventory' ? inventoryView() : mealsView()}
+    `;
+  }
+
+  function familyView() {
+    return `
+      <section class="panel">
+        <p class="lede">가입 계정이 아니라, 집 안 이름표예요.</p>
+        <h2>가족 프로필</h2>
+        <p class="hint">엄마·아빠는 별도 가입하지 않아도 됩니다. 건강·금융 정보는 저장하지 않아요.</p>
+        <ul class="chip-list">${(state.members || [])
+          .map(
+            (m) =>
+              `<li class="member-chip">${esc(m.displayName)} · ${esc(m.roleLabel || m.role || '구성원')} <button type="button" class="ghost" data-act="remove-member" data-id="${esc(m.id)}" aria-label="삭제">×</button></li>`,
+          )
+          .join('')}</ul>
+        <form data-form="add-member" class="cloud-auth">
+          <label>이름<input name="displayName" required maxlength="40" placeholder="엄마" /></label>
+          <label>역할
+            <select name="roleLabel">
+              <option value="구성원">구성원</option>
+              <option value="엄마">엄마</option>
+              <option value="아빠">아빠</option>
+              <option value="자녀">자녀</option>
+              <option value="관리자">관리자</option>
+            </select>
+          </label>
+          <button type="submit" class="secondary">프로필 추가</button>
+        </form>
+      </section>
+      <section class="panel muted">
+        <h2>아직 안 하는 것</h2>
+        <ul class="locked"><li>가족 건강</li><li>가족 일정</li><li>가사 분담</li></ul>
+      </section>`;
   }
 
   function homeView() {
@@ -400,7 +476,7 @@ export function createApp(root) {
             ${pack.setup.steps
               .map(
                 (s) => `<li>
-                <button type="button" class="primary block" data-nav="${s.view}">${esc(s.label)}</button>
+                <button type="button" class="primary block" data-nav="${s.view}" ${s.segment ? `data-segment="${s.segment}"` : ''}>${esc(s.label)}</button>
                 <small>${esc(s.hint)}</small>
               </li>`,
               )
@@ -430,11 +506,11 @@ export function createApp(root) {
       <section class="panel muted">
         <h2>도구</h2>
         <div class="tool-grid">
-          <button type="button" class="secondary" data-nav="shopping">장보기${openCount ? ` · ${openCount}` : ''}</button>
-          <button type="button" class="secondary" data-nav="inventory">재고</button>
-          <button type="button" class="secondary" data-nav="meals">식단</button>
+          <button type="button" class="secondary" data-nav="food" data-segment="shopping">장보기${openCount ? ` · ${openCount}` : ''}</button>
+          <button type="button" class="secondary" data-nav="food" data-segment="inventory">재고</button>
+          <button type="button" class="secondary" data-nav="food" data-segment="meals">식단</button>
         </div>
-        <p class="hint">변경은 미리보기 후 승인해야 저장돼요. AI 없이도 규칙으로 동작해요.</p>
+        <p class="hint">세 가지는 식생활 탭 안에 모아 두었어요. 변경은 승인 후에만 저장돼요.</p>
       </section>`;
   }
 
@@ -456,7 +532,7 @@ export function createApp(root) {
         <h2>추천할 저녁이 부족해요</h2>
         <p class="hint">${esc(dinnerHome.emptyReason)}</p>
         <div class="suggest-actions">
-          <button type="button" class="secondary" data-nav="inventory">재고 확인하기</button>
+          <button type="button" class="secondary" data-nav="food" data-segment="inventory">재고 확인하기</button>
         </div>
       </section>`;
     }
@@ -776,31 +852,11 @@ export function createApp(root) {
     return `
       <section class="panel">
         <h2>우리 집</h2>
+        <p class="hint">가족 이름표는 <strong>가족</strong> 탭에 두었어요. 여기는 집 설정·클라우드·AI만.</p>
         <form data-form="household">
           <label>가정 이름<input name="name" value="${esc(state.household.name)}" maxlength="40" /></label>
           <label>기본 장보기 예산<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon}" /></label>
           <button type="submit" class="primary">저장</button>
-        </form>
-        <h3 class="subhead">가족 프로필 (로그인 계정 아님)</h3>
-        <p class="hint">엄마·아빠는 별도 가입하지 않아요. 이름만 적어 두면 됩니다. 건강·금융 정보는 저장하지 않습니다.</p>
-        <ul class="chip-list">${(state.members || [])
-          .map(
-            (m) =>
-              `<li class="member-chip">${esc(m.displayName)} · ${esc(m.roleLabel || m.role || '구성원')} <button type="button" class="ghost" data-act="remove-member" data-id="${esc(m.id)}" aria-label="삭제">×</button></li>`,
-          )
-          .join('')}</ul>
-        <form data-form="add-member" class="cloud-auth">
-          <label>이름<input name="displayName" required maxlength="40" placeholder="엄마" /></label>
-          <label>역할
-            <select name="roleLabel">
-              <option value="구성원">구성원</option>
-              <option value="엄마">엄마</option>
-              <option value="아빠">아빠</option>
-              <option value="자녀">자녀</option>
-              <option value="관리자">관리자</option>
-            </select>
-          </label>
-          <button type="submit" class="secondary">프로필 추가</button>
         </form>
       </section>
       ${cloudPanel()}
@@ -948,7 +1004,15 @@ export function createApp(root) {
   function bind() {
     root.querySelectorAll('[data-nav]').forEach((btn) => {
       btn.onclick = () => {
-        state.settings.view = btn.dataset.nav;
+        let view = btn.dataset.nav;
+        let segment = btn.dataset.segment || state.settings.foodSegment;
+        if (view === 'shopping' || view === 'inventory' || view === 'meals') {
+          segment = view;
+          view = 'food';
+        }
+        const nav = normalizeFoodNav(view, segment);
+        state.settings.view = nav.view;
+        state.settings.foodSegment = nav.foodSegment;
         editingId = null;
         persist(state);
         render();
@@ -1713,7 +1777,8 @@ export function createApp(root) {
           const list = createShoppingList({ budgetWon: s.household.budgetWon });
           s.shoppingLists.unshift(list);
           s.settings.activeListId = list.id;
-          s.settings.view = 'shopping';
+          s.settings.view = 'food';
+          s.settings.foodSegment = 'shopping';
         }, '새 장보기 목록을 만들었어요.');
     }
   }

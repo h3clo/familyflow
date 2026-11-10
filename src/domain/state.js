@@ -4,7 +4,7 @@ import { seedState } from './seed.js';
 
 export function createEmptyState() {
   return {
-    version: 6,
+    version: 7,
     household: {
       id: uid(),
       name: '우리 집',
@@ -32,6 +32,7 @@ export function createEmptyState() {
     settings: {
       activeListId: null,
       view: 'home',
+      foodSegment: 'shopping',
       localAi: false,
       todayFlags: null,
       ai: {
@@ -91,6 +92,16 @@ export function migrateState(raw) {
       sortOrder: Number.isFinite(m.sortOrder) ? m.sortOrder : idx,
     }));
     state.version = 6;
+  }
+  if (state.version < 7) {
+    if (!state.settings) state.settings = {};
+    const v = state.settings.view;
+    if (v === 'shopping' || v === 'inventory' || v === 'meals') {
+      state.settings.foodSegment = v;
+      state.settings.view = 'food';
+    }
+    if (!state.settings.foodSegment) state.settings.foodSegment = 'shopping';
+    state.version = 7;
   }
   return state;
 }

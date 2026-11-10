@@ -66,9 +66,9 @@ export function generateSuggestions(state, now = Date.now()) {
       setup: {
         title: '가족을 챙기려면 조금만 알려주세요',
         steps: [
-          { view: 'inventory', label: '재고 등록', hint: '휴지·식재료 상태만 충분함/없음으로' },
-          { view: 'shopping', label: '장보기 열기', hint: '이미 살 게 있으면 목록에' },
-          { view: 'meals', label: '식단 보기', hint: '야채찜·구이 패턴은 이미 준비됨' },
+          { view: 'food', segment: 'inventory', label: '재고 등록', hint: '휴지·식재료 상태만 충분함/없음으로' },
+          { view: 'food', segment: 'shopping', label: '장보기 열기', hint: '이미 살 게 있으면 목록에' },
+          { view: 'food', segment: 'meals', label: '식단 보기', hint: '야채찜·구이 패턴은 이미 준비됨' },
         ],
       },
     };

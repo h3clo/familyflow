@@ -149,6 +149,30 @@ a { color: var(--brand); }
 }
 .dinner-empty .suggest-actions { margin-top: 12px; }
 
+.food-coach h2 {
+  margin: 6px 0 8px;
+  font-size: 1.15rem;
+}
+.food-segments {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0 0 4px;
+}
+.food-seg {
+  min-height: 48px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  font-weight: 600;
+}
+.food-seg.on {
+  background: var(--brand);
+  color: var(--brand-ink);
+  border-color: var(--brand);
+}
+
 .quick-add textarea {
   width: 100%;
   border: 1px solid var(--line);
