@@ -38,6 +38,7 @@ import {
 } from './domain/dinnerHome.js';
 import { resolveDinnerVisual } from './domain/dinnerVisual.js';
 import { nextFoodAction, normalizeFoodNav } from './domain/foodHub.js';
+import { pinWindowTop } from './lib/scrollLock.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
 import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
 import { runConversationTurn } from './ai/conversation.js';
@@ -1366,6 +1367,8 @@ export function createApp(root) {
         editingId = null;
         persist(state);
         render();
+        // Tab changes should start at the top (iOS often keeps a phantom offset).
+        requestAnimationFrame(() => pinWindowTop({ force: true }));
       };
     });
 
