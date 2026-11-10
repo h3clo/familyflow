@@ -19,7 +19,7 @@
 Family Flow는 Vite 기반 SPA다.
 
 - **프론트:** `src/` (바닐라 JS). 로컬 개발 `http://127.0.0.1:5174/`
-- **저장:** 브라우저 로컬 + (로그인·이전 승인 후) Supabase를 `cloud-primary`로 사용
+- **저장:** 브라우저 로컬 캐시 + (로그인·집 연결 후 자동) Supabase를 `cloud-primary`로 사용
 - **인증·DB·Realtime:** Family Flow 전용 Supabase 프로젝트
 - **AI (선택):** 로컬 한국어 패턴 → Ollama(개발 프록시) → Edge `ai-complete`(Groq 무료) → 규칙/안내
 - **배포:** GitHub Pages (`base` `/familyflow/`), 워크플로 `.github/workflows/pages.yml`
