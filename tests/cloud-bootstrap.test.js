@@ -6,6 +6,8 @@ import {
   prepareHouseholdSwitch,
   bootstrapNetworkFailure,
   syncSidesDiffer,
+  finalizeBootstrapPull,
+  isQuietPullSuccess,
 } from '../src/cloud/bootstrap.js';
 import { buildMigrationPlan } from '../src/cloud/migratePlan.js';
 import { createEmptyState, migrateState } from '../src/domain/state.js';
@@ -201,4 +203,61 @@ test('migrateState still boots after bootstrap helpers (no schema wipe side effe
   assert.equal(migrated.version, 7);
   assert.ok(Array.isArray(migrated.cookingPatterns));
   assert.ok(Array.isArray(migrated.sauces));
+});
+
+test('bootstrap pull promotes cloud-primary only after successful download', () => {
+  const local = seeded();
+  local.cloud = { householdId: 'hh1', userId: 'u1', mode: 'local', migratedAt: null };
+  local.cookingPatterns = [{ id: 'p-local', name: '에어프라이' }];
+  local.sauces = [{ id: 's-local', name: '집소스' }];
+
+  const pulled = seeded();
+  pulled.inventory = [createInventoryItem({ name: '클라우드두부', status: 'enough', location: 'fridge' })];
+  pulled.cookingPatterns = [];
+  pulled.sauces = [];
+
+  const ok = finalizeBootstrapPull({
+    pullOk: true,
+    localState: local,
+    pulledState: pulled,
+    userId: 'u1',
+    now: '2026-11-10T12:00:00.000Z',
+  });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.mode, 'cloud-primary');
+  assert.equal(ok.state.cloud.mode, 'cloud-primary');
+  assert.equal(ok.state.inventory[0].name, '클라우드두부');
+  // Device-local catalog preserved even when cloud payload omits it.
+  assert.equal(ok.state.cookingPatterns[0].name, '에어프라이');
+  assert.equal(ok.state.sauces[0].name, '집소스');
+});
+
+test('bootstrap pull failure keeps local mode and data (no false success)', () => {
+  const local = seeded();
+  local.cloud = { householdId: 'hh1', userId: 'u1', mode: 'local', migratedAt: null };
+  local.inventory = [createInventoryItem({ name: '로컬유지', status: 'enough', location: 'pantry' })];
+
+  const failed = finalizeBootstrapPull({
+    pullOk: false,
+    localState: local,
+    pulledState: null,
+    error: new Error('Failed to fetch'),
+  });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.preservedLocal, true);
+  assert.equal(failed.mode, 'local');
+  assert.equal(failed.state.cloud.mode, 'local');
+  assert.equal(failed.state.inventory[0].name, '로컬유지');
+  assert.match(failed.message, /Failed to fetch|네트워크|실패/);
+});
+
+test('isQuietPullSuccess never treats swallowed/undefined pull results as ok', () => {
+  assert.equal(isQuietPullSuccess(undefined), false);
+  assert.equal(isQuietPullSuccess(null), false);
+  assert.equal(isQuietPullSuccess({}), false);
+  assert.equal(isQuietPullSuccess({ ok: false, message: '불러오기 실패' }), false);
+  assert.equal(isQuietPullSuccess({ ok: false, skipped: true }), false);
+  assert.equal(isQuietPullSuccess({ ok: false, offline: true }), false);
+  assert.equal(isQuietPullSuccess({ ok: true, skipped: true }), false);
+  assert.equal(isQuietPullSuccess({ ok: true }), true);
 });

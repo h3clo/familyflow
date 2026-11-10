@@ -68,6 +68,8 @@ import {
   chooseCloudBootstrapAction,
   prepareHouseholdSwitch,
   bootstrapNetworkFailure,
+  finalizeBootstrapPull,
+  isQuietPullSuccess,
 } from './cloud/bootstrap.js';
 import { uid } from './lib/id.js';
 
@@ -178,18 +180,30 @@ export function createApp(root) {
     }, 450);
   }
 
+  /**
+   * Pull remote household into local cache.
+   * Always returns { ok } — callers must not treat void/undefined as success.
+   */
   async function pullCloudQuiet({ reason = 'pull' } = {}) {
-    if (!isCloudPrimary() || applyingRemote) return;
+    if (!isCloudPrimary()) return { ok: false, skipped: true, reason: 'not-primary' };
+    if (applyingRemote) return { ok: false, skipped: true, reason: 'busy' };
     if (!syncRuntime.isOnline()) {
       syncRuntime.setStatus(SyncStatus.offline, '오프라인 — 이 기기 캐시를 보여 줘요');
       render();
-      return;
+      return { ok: false, offline: true };
     }
     syncRuntime.setStatus(SyncStatus.syncing, reason === 'realtime' ? '다른 기기 변경 반영 중…' : '클라우드에서 불러오는 중…');
     render();
     try {
       applyingRemote = true;
+      const localCatalog = {
+        cookingPatterns: state.cookingPatterns,
+        sauces: state.sauces,
+      };
       const next = await pullCloudToState(state, state.cloud.householdId);
+      // Patterns/sauces stay device-local (no cloud tables).
+      next.cookingPatterns = localCatalog.cookingPatterns || next.cookingPatterns || [];
+      next.sauces = localCatalog.sauces || next.sauces || [];
       next.cloud = {
         ...next.cloud,
         mode: 'cloud-primary',
@@ -202,8 +216,11 @@ export function createApp(root) {
       persistActive();
       const now = new Date().toISOString();
       syncRuntime.setStatus(SyncStatus.ok, '동기화 완료', { syncedAt: now, error: null });
+      return { ok: true };
     } catch (err) {
-      syncRuntime.setStatus(SyncStatus.error, err.message || '불러오기 실패', { error: err.message });
+      const message = err.message || '불러오기 실패';
+      syncRuntime.setStatus(SyncStatus.error, message, { error: message });
+      return { ok: false, error: err, message };
     } finally {
       applyingRemote = false;
       render();
@@ -232,7 +249,11 @@ export function createApp(root) {
     const hid = state.cloud?.householdId;
     if (!hid || !cloudUi.user) return { ok: false, action: 'skip' };
     if (state.cloud.mode === 'cloud-primary' && !forcePreview) {
-      await pullCloudQuiet({ reason: 'session' });
+      const pulled = await pullCloudQuiet({ reason: 'session' });
+      if (!isQuietPullSuccess(pulled)) {
+        cloudUi.message = pulled?.message || '클라우드에서 불러오지 못했어요. 이 기기 데이터는 그대로 두었어요.';
+        return { ok: false, action: 'error', error: pulled?.error || null, pull: pulled };
+      }
       await startCloudListeners();
       return { ok: true, action: 'already' };
     }
@@ -278,16 +299,40 @@ export function createApp(root) {
         return { ok: true, action };
       }
 
-      // pull: cloud has syncable data, local transactional footprint empty
-      const now = new Date().toISOString();
-      state.cloud.mode = 'cloud-primary';
-      state.cloud.migratedAt = state.cloud.migratedAt || now;
-      state.cloud.userId = cloudUi.user.id;
+      // pull: download first — promote to cloud-primary only after success.
+      const localBeforePull = state;
+      let pulledState = null;
+      try {
+        pulledState = await pullCloudToState(localBeforePull, hid);
+      } catch (pullErr) {
+        const failed = finalizeBootstrapPull({
+          pullOk: false,
+          localState: localBeforePull,
+          error: pullErr,
+        });
+        state = failed.state;
+        persist(state);
+        cloudUi.message = failed.message;
+        syncRuntime.setStatus(SyncStatus.error, failed.message, { error: failed.message });
+        return failed;
+      }
+
+      const finalized = finalizeBootstrapPull({
+        pullOk: true,
+        localState: localBeforePull,
+        pulledState,
+        userId: cloudUi.user.id,
+      });
+      state = finalized.state;
+      ensureActiveList(state);
       persistActive();
       cloudUi.migrationPlan = null;
       cloudUi.migrationText = '';
-      cloudUi.message = '클라우드 집 데이터를 불러왔고, 이제 클라우드가 기본 저장소예요.';
-      await pullCloudQuiet({ reason: 'bootstrap' });
+      cloudUi.message = finalized.message;
+      syncRuntime.setStatus(SyncStatus.ok, '클라우드 연결됨', {
+        syncedAt: state.cloud.lastPulledAt,
+        error: null,
+      });
       await startCloudListeners();
       return { ok: true, action: 'pull' };
     } catch (err) {
@@ -348,8 +393,13 @@ export function createApp(root) {
         if (state.cloud.householdId) {
           cloudUi.members = await listMembers(state.cloud.householdId);
           if (state.cloud.mode === 'cloud-primary') {
-            await pullCloudQuiet({ reason: 'session' });
-            await startCloudListeners();
+            const pulled = await pullCloudQuiet({ reason: 'session' });
+            if (!isQuietPullSuccess(pulled)) {
+              cloudUi.message =
+                pulled?.message || '클라우드 불러오기에 실패했어요. 이 기기 캐시는 그대로입니다.';
+            } else {
+              await startCloudListeners();
+            }
           } else {
             await activateCloudAsPrimary();
           }
@@ -1832,8 +1882,10 @@ export function createApp(root) {
           setToast('클라우드 기본 저장소로 이전한 뒤에 불러올 수 있어요.');
           return;
         }
-        await pullCloudQuiet({ reason: 'manual' });
-        cloudUi.message = '클라우드 최신 데이터를 반영했어요.';
+        const pulled = await pullCloudQuiet({ reason: 'manual' });
+        cloudUi.message = isQuietPullSuccess(pulled)
+          ? '클라우드 최신 데이터를 반영했어요.'
+          : pulled?.message || '불러오기에 실패했어요. 이 기기 데이터는 그대로 두었어요.';
       };
     }
 
@@ -1935,7 +1987,12 @@ export function createApp(root) {
           cloudUi.message = `이전 완료 (장보기 ${result.counts.shoppingItems}, 재고 ${result.counts.inventory}, 프로필 ${result.counts.familyProfiles}). 이제 이 계정이 기본 저장소예요.`;
           syncRuntime.setStatus(SyncStatus.ok, '이전·동기화 완료', { syncedAt: now, error: null });
           await startCloudListeners();
-          await pullCloudQuiet({ reason: 'post-migrate' });
+          const pulled = await pullCloudQuiet({ reason: 'post-migrate' });
+          if (!isQuietPullSuccess(pulled)) {
+            cloudUi.message =
+              (cloudUi.message ? `${cloudUi.message} ` : '') +
+              (pulled?.message || '올린 뒤 다시 불러오기는 실패했어요. 로컬·클라우드 원본은 유지됩니다.');
+          }
         } catch (err) {
           cloudUi.message = err.message || '이전에 실패했어요.';
           syncRuntime.setStatus(SyncStatus.error, cloudUi.message, { error: cloudUi.message });

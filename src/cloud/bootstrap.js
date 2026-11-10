@@ -182,6 +182,74 @@ export function bootstrapNetworkFailure(err) {
   };
 }
 
+/**
+ * Promote to cloud-primary only after a successful pull payload exists.
+ * On failure, return the untouched local state (mode stays local unless already primary).
+ *
+ * Cooking patterns / sauces are device-local: always keep the pre-pull catalog when
+ * the pulled snapshot omits them (current cloud schema has no pattern/sauce tables).
+ *
+ * @param {{ pullOk: boolean, localState: object, pulledState?: object|null, userId?: string|null, now?: string, error?: unknown }} args
+ */
+export function finalizeBootstrapPull({
+  pullOk,
+  localState,
+  pulledState = null,
+  userId = null,
+  now = new Date().toISOString(),
+  error = null,
+} = {}) {
+  if (!pullOk || !pulledState) {
+    const kept = structuredClone(localState);
+    if (kept.cloud && kept.cloud.mode !== 'cloud-primary') {
+      kept.cloud.mode = 'local';
+    }
+    return {
+      ok: false,
+      action: 'error',
+      state: kept,
+      preservedLocal: true,
+      mode: kept.cloud?.mode || 'local',
+      message: bootstrapNetworkFailure(error).message,
+      error,
+    };
+  }
+
+  const next = structuredClone(pulledState);
+  // Device-local kitchen catalog — never drop local patterns/sauces on pull.
+  next.cookingPatterns = localState?.cookingPatterns || next.cookingPatterns || [];
+  next.sauces = localState?.sauces || next.sauces || [];
+
+  next.cloud = {
+    ...(next.cloud || {}),
+    ...(localState?.cloud || {}),
+    householdId: localState?.cloud?.householdId || next.cloud?.householdId || null,
+    userId: userId || localState?.cloud?.userId || null,
+    mode: 'cloud-primary',
+    migratedAt: localState?.cloud?.migratedAt || now,
+    lastPushedAt: localState?.cloud?.lastPushedAt || null,
+    lastPulledAt: now,
+  };
+
+  return {
+    ok: true,
+    action: 'pull',
+    state: next,
+    preservedLocal: false,
+    mode: 'cloud-primary',
+    message: '클라우드 집 데이터를 불러왔고, 이제 클라우드가 기본 저장소예요.',
+    error: null,
+  };
+}
+
+/**
+ * Interpret a quiet-pull result so callers never treat swallowed errors as success.
+ * @param {{ ok?: boolean, skipped?: boolean, offline?: boolean }|null|undefined} result
+ */
+export function isQuietPullSuccess(result) {
+  return !!(result && result.ok === true && !result.skipped && !result.offline);
+}
+
 function countMeaningfulMembers(members) {
   return (members || []).filter((m) => {
     const name = String(m.displayName || m.name || '').trim();

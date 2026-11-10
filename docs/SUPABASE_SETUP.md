@@ -81,7 +81,8 @@ VITE_SUPABASE_PUBLISHABLE_KEY=<publishable 또는 anon 공개 키>
 - 가구 만들기 (`create_household` → owner) — 가입 흐름에 포함
 - 초대 코드 발급 · 참여 (고급)
 - 로컬 → 클라우드 복사 (로컬 자동 삭제 없음)
-- 클라우드 → 로컬 불러오기 (명시적 버튼)
+- 클라우드 → 로컬 불러오기 (명시적 버튼; **성공 후에만** cloud-primary)
+- 조리 패턴·소스는 **기기 로컬** (클라우드 테이블 없음)
 
 ## RLS 요약
 
