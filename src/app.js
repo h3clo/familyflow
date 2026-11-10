@@ -547,16 +547,19 @@ export function createApp(root) {
   function settingsBtn(opts = {}) {
     const onMedia = !!opts.onMedia;
     const on = state.settings.view === 'more';
-    return `<button type="button" class="settings-btn ${on ? 'on' : ''} ${onMedia ? 'on-media' : ''}" data-nav="more" aria-label="설정" title="설정" aria-pressed="${on ? 'true' : 'false'}">
-      <span class="settings-toggle" aria-hidden="true">
-        <span class="settings-toggle-sun">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.2M12 18.8V21M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M3 12h2.2M18.8 12H21M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>
-        </span>
-        <span class="settings-toggle-moon">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M19.5 14.2A7.6 7.6 0 0 1 9.8 4.5 7.8 7.8 0 1 0 19.5 14.2Z"/></svg>
-        </span>
-        <span class="settings-toggle-knob"></span>
-      </span>
+    // Sliders (not sun-ray gear) so it never reads as a theme toggle.
+    return `<button type="button" class="settings-btn ${on ? 'on' : ''} ${onMedia ? 'on-media' : ''}" data-nav="more" aria-label="설정" title="설정">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 7h10"/>
+        <path d="M18 7h2"/>
+        <circle cx="16" cy="7" r="2.2"/>
+        <path d="M4 17h2"/>
+        <path d="M10 17h10"/>
+        <circle cx="8" cy="17" r="2.2"/>
+        <path d="M4 12h4"/>
+        <path d="M12 12h8"/>
+        <circle cx="10" cy="12" r="2.2"/>
+      </svg>
     </button>`;
   }
 
