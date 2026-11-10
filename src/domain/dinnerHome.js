@@ -1,10 +1,14 @@
 /**
- * Home dinner recommendation — confirmed inventory / meals only.
- * Never invents unknown stock. Changes go through ActionProposal only.
+ * Home dinner recommendation.
+ * Prefer confirmed protein stock; if none yet, fall back to starter pattern×protein
+ * suggestions (does not invent inventory rows). Changes go through ActionProposal only.
  */
 import { createProposal } from './proposals.js';
 
 const PROTEIN_RE = /닭|돼지|소고기|두부|고기|고등어|삼치|연어|계란|달걀/;
+
+/** Early-home defaults when the household has not registered protein stock yet. */
+export const STARTER_PROTEINS = ['닭고기', '고등어', '돼지고기', '두부'];
 
 /**
  * @param {object} state
@@ -27,7 +31,7 @@ export function buildDinnerHomeOffer(state, opts = {}) {
       dinner: null,
       offer: null,
       emptyReason:
-        '추천할 저녁이 부족해요. 확인된 단백질·재료 재고가 있으면 홈에서 먼저 제안해요. 모르는 재고는 추측하지 않아요.',
+        '추천할 저녁이 부족해요. 식단 패턴이 준비되면 홈에서 바로 제안해요.',
     };
   }
 
@@ -91,20 +95,12 @@ export function buildDinnerHomeOffer(state, opts = {}) {
   };
 }
 
-/** Deterministic candidates from enough/low proteins only. */
+/** Deterministic candidates from confirmed proteins, else starter proteins. */
 export function listDinnerCandidates(state) {
   const inventory = state.inventory || [];
   const patterns = state.cookingPatterns || [];
   const sauces = state.sauces || [];
   const recentProteins = recentProteinHints(state);
-
-  const proteins = inventory
-    .filter((i) => PROTEIN_RE.test(i.name))
-    .filter((i) => i.status === 'enough' || i.status === 'low' || i.status === 'out')
-    .slice()
-    .sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.name.localeCompare(b.name, 'ko'));
-
-  const candidates = [];
 
   const dinnerPatterns = patterns.filter((p) => p.method === 'steam' || p.method === 'roast');
   const usePatterns = dinnerPatterns.length
@@ -113,42 +109,69 @@ export function listDinnerCandidates(state) {
       ? [patterns[0]]
       : [null];
 
-  for (const item of proteins) {
-    if (item.status === 'unknown') continue;
+  const confirmed = inventory
+    .filter((i) => PROTEIN_RE.test(i.name))
+    .filter((i) => i.status === 'enough' || i.status === 'low' || i.status === 'out')
+    .slice()
+    .sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.name.localeCompare(b.name, 'ko'));
 
+  const proteinSources = confirmed.length
+    ? confirmed.map((item) => ({
+        keyId: item.id,
+        name: item.name,
+        inventoryId: item.id,
+        stockStatus: item.status,
+        tracked: true,
+      }))
+    : STARTER_PROTEINS.map((name) => ({
+        keyId: `starter-${normalize(name)}`,
+        name,
+        inventoryId: null,
+        stockStatus: 'untracked',
+        tracked: false,
+      }));
+
+  const candidates = [];
+
+  for (const source of proteinSources) {
     for (const pattern of usePatterns) {
       const saucePool = pattern
         ? sauces.filter((s) => (s.forPatterns || []).includes(pattern.name))
         : [];
-      const sauce = pickPreferredSauce(saucePool, item.name) || (!saucePool.length ? sauces[0] : null) || null;
+      const sauce =
+        pickPreferredSauce(saucePool, source.name) || (!saucePool.length ? sauces[0] : null) || null;
 
       const reasons = [];
       const unknowns = [];
-      if (item.status === 'enough') reasons.push(`재고: ${item.name} 충분`);
-      if (item.status === 'low') reasons.push(`재고: ${item.name} 부족(확인됨)`);
-      if (item.status === 'out') reasons.push(`재고: ${item.name} 없음(확인됨)`);
+      if (source.stockStatus === 'enough') reasons.push(`재고: ${source.name} 충분`);
+      if (source.stockStatus === 'low') reasons.push(`재고: ${source.name} 부족(확인됨)`);
+      if (source.stockStatus === 'out') reasons.push(`재고: ${source.name} 없음(확인됨)`);
+      if (source.stockStatus === 'untracked') {
+        reasons.push('재고 등록 전 · 자주 쓰는 패턴으로 먼저 제안');
+        unknowns.push(`${source.name} 재고는 아직 확인하지 않음`);
+      }
 
       const effort = pattern?.effort === 'low' ? '낮음' : pattern?.effort === 'medium' ? '보통' : null;
       if (effort) reasons.push(`조리 부담: ${effort}(${pattern.name})`);
 
-      if (recentProteins.has(normalize(item.name))) {
+      if (recentProteins.has(normalize(source.name))) {
         reasons.push('최근 같은 재료를 썼어요 · 다른 후보도 볼 수 있어요');
-      } else if (recentProteins.size) {
+      } else if (recentProteins.size && source.tracked) {
         reasons.push('최근 식단에 이 재료는 안 보임(확인된 범위)');
       }
 
       let shopping = null;
-      if (item.status === 'out' || item.status === 'low') {
+      if (source.stockStatus === 'out' || source.stockStatus === 'low') {
         shopping = {
-          name: item.name,
+          name: source.name,
           quantity: 1,
-          unit: guessUnit(item.name),
-          inventoryId: item.id,
+          unit: guessUnit(source.name),
+          inventoryId: source.inventoryId,
         };
         reasons.push(
-          item.status === 'out'
-            ? `장보기 제안: ${item.name} (재고 없음)`
-            : `장보기 제안: ${item.name} (재고 부족)`,
+          source.stockStatus === 'out'
+            ? `장보기 제안: ${source.name} (재고 없음)`
+            : `장보기 제안: ${source.name} (재고 부족)`,
         );
       }
 
@@ -157,12 +180,12 @@ export function listDinnerCandidates(state) {
         unknowns.push(`소스(${sauce.name}) 재료 재고는 확인하지 않음`);
       }
 
-      const title = pattern ? `${pattern.name} · ${item.name}` : item.name;
+      const title = pattern ? `${pattern.name} · ${source.name}` : source.name;
       candidates.push({
-        key: `${item.id}-${pattern?.id || 'none'}-${sauce?.id || 'none'}`,
+        key: `${source.keyId}-${pattern?.id || 'none'}-${sauce?.id || 'none'}`,
         title,
-        protein: item.name,
-        inventoryId: item.id,
+        protein: source.name,
+        inventoryId: source.inventoryId,
         patternId: pattern?.id || null,
         patternName: pattern?.name || '',
         sauceId: sauce?.id || null,
@@ -170,7 +193,7 @@ export function listDinnerCandidates(state) {
         reasons,
         unknowns,
         shopping,
-        stockStatus: item.status,
+        stockStatus: source.stockStatus,
       });
     }
   }
@@ -204,6 +227,7 @@ function statusRank(status) {
   if (status === 'enough') return 0;
   if (status === 'low') return 1;
   if (status === 'out') return 2;
+  if (status === 'untracked') return 3;
   return 9;
 }
 

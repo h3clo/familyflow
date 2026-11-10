@@ -46,10 +46,10 @@ export function nextFoodAction(state) {
 
   if (dinner.status === 'empty') {
     return {
-      segment: 'inventory',
-      title: '저녁 추천에 재료가 부족해요',
-      hint: '단백질·재료를 상태만 등록하면, 홈이 먼저 저녁을 제안해요.',
-      cta: '재고 등록',
+      segment: 'meals',
+      title: '식단 패턴을 먼저 볼까요',
+      hint: '재고가 없어도 홈에서 저녁 후보를 고를 수 있어요. 나중에 재고만 보강하면 됩니다.',
+      cta: '식단 보기',
     };
   }
 

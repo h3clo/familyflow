@@ -3,6 +3,8 @@
  * Keep household naming separate from Auth profile display_name.
  */
 
+export { chooseCloudBootstrapAction, buildSyncableFootprint } from './bootstrap.js';
+
 export function needsCloudAuthGate({ configured, user, deferAuth }) {
   return !!(configured && !user && !deferAuth);
 }

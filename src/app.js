@@ -55,10 +55,22 @@ import { getSupabaseClient } from './cloud/client.js';
 import {
   ensureDeviceLocalBackup,
   saveScopedState,
+  loadScopedState,
   isolateOnSignOut,
   bootPrefersScopedCache,
 } from './cloud/sessionScope.js';
-import { needsCloudAuthGate, parseSignupHouseholdName } from './cloud/onboarding.js';
+import {
+  needsCloudAuthGate,
+  parseSignupHouseholdName,
+} from './cloud/onboarding.js';
+import {
+  buildSyncableFootprint,
+  chooseCloudBootstrapAction,
+  prepareHouseholdSwitch,
+  bootstrapNetworkFailure,
+  finalizeBootstrapPull,
+  isQuietPullSuccess,
+} from './cloud/bootstrap.js';
 import { uid } from './lib/id.js';
 
 export function createApp(root) {
@@ -168,18 +180,30 @@ export function createApp(root) {
     }, 450);
   }
 
+  /**
+   * Pull remote household into local cache.
+   * Always returns { ok } — callers must not treat void/undefined as success.
+   */
   async function pullCloudQuiet({ reason = 'pull' } = {}) {
-    if (!isCloudPrimary() || applyingRemote) return;
+    if (!isCloudPrimary()) return { ok: false, skipped: true, reason: 'not-primary' };
+    if (applyingRemote) return { ok: false, skipped: true, reason: 'busy' };
     if (!syncRuntime.isOnline()) {
       syncRuntime.setStatus(SyncStatus.offline, '오프라인 — 이 기기 캐시를 보여 줘요');
       render();
-      return;
+      return { ok: false, offline: true };
     }
     syncRuntime.setStatus(SyncStatus.syncing, reason === 'realtime' ? '다른 기기 변경 반영 중…' : '클라우드에서 불러오는 중…');
     render();
     try {
       applyingRemote = true;
+      const localCatalog = {
+        cookingPatterns: state.cookingPatterns,
+        sauces: state.sauces,
+      };
       const next = await pullCloudToState(state, state.cloud.householdId);
+      // Patterns/sauces stay device-local (no cloud tables).
+      next.cookingPatterns = localCatalog.cookingPatterns || next.cookingPatterns || [];
+      next.sauces = localCatalog.sauces || next.sauces || [];
       next.cloud = {
         ...next.cloud,
         mode: 'cloud-primary',
@@ -192,8 +216,11 @@ export function createApp(root) {
       persistActive();
       const now = new Date().toISOString();
       syncRuntime.setStatus(SyncStatus.ok, '동기화 완료', { syncedAt: now, error: null });
+      return { ok: true };
     } catch (err) {
-      syncRuntime.setStatus(SyncStatus.error, err.message || '불러오기 실패', { error: err.message });
+      const message = err.message || '불러오기 실패';
+      syncRuntime.setStatus(SyncStatus.error, message, { error: message });
+      return { ok: false, error: err, message };
     } finally {
       applyingRemote = false;
       render();
@@ -213,6 +240,138 @@ export function createApp(root) {
     syncRuntime.startPolling(45000, () => pullCloudQuiet({ reason: 'poll' }));
   }
 
+  /**
+   * Bind household so Supabase is the real store.
+   * Considers shopping/inventory/meals/dinner/profiles (+ local pattern·sauce catalog).
+   * Divergent both-sides data → preview approval only (no silent overwrite).
+   */
+  async function activateCloudAsPrimary({ forcePreview = false } = {}) {
+    const hid = state.cloud?.householdId;
+    if (!hid || !cloudUi.user) return { ok: false, action: 'skip' };
+    if (state.cloud.mode === 'cloud-primary' && !forcePreview) {
+      const pulled = await pullCloudQuiet({ reason: 'session' });
+      if (!isQuietPullSuccess(pulled)) {
+        cloudUi.message = pulled?.message || '클라우드에서 불러오지 못했어요. 이 기기 데이터는 그대로 두었어요.';
+        return { ok: false, action: 'error', error: pulled?.error || null, pull: pulled };
+      }
+      await startCloudListeners();
+      return { ok: true, action: 'already' };
+    }
+
+    ensureDeviceLocalBackup(state);
+    syncRuntime.setStatus(SyncStatus.syncing, '클라우드에 연결 중…');
+    render();
+
+    try {
+      const snap = await fetchCloudSnapshot(state, hid);
+      const plan = buildMigrationPlan(state, snap);
+      const localFp = buildSyncableFootprint(state);
+      const cloudFp = buildSyncableFootprint(snap);
+      const action = forcePreview
+        ? 'needs-preview'
+        : chooseCloudBootstrapAction({ local: localFp, cloud: cloudFp, plan });
+
+      if (action === 'needs-preview') {
+        cloudUi.migrationPlan = plan;
+        cloudUi.migrationText = formatMigrationPreview(plan);
+        cloudUi.message =
+          '이 기기와 클라우드에 서로 다른 기록이 있어요. 미리보기를 확인한 뒤 승인해 주세요. 자동으로 덮어쓰지 않아요.';
+        syncRuntime.setStatus(SyncStatus.idle, '이전 확인 필요');
+        return { ok: false, action: 'needs-preview' };
+      }
+
+      if (action === 'push' || action === 'empty') {
+        if (action === 'push') await pushLocalToCloud(state, hid);
+        const now = new Date().toISOString();
+        state.cloud.mode = 'cloud-primary';
+        state.cloud.migratedAt = now;
+        state.cloud.lastPushedAt = now;
+        state.cloud.userId = cloudUi.user.id;
+        persistActive();
+        cloudUi.migrationPlan = null;
+        cloudUi.migrationText = '';
+        cloudUi.message =
+          action === 'push'
+            ? '이 기기 기록을 클라우드에 올렸고, 이제 클라우드가 기본 저장소예요.'
+            : '클라우드를 기본 저장소로 연결했어요. 재고·장보기·식단을 넣으면 자동으로 동기화돼요.';
+        syncRuntime.setStatus(SyncStatus.ok, '클라우드 연결됨', { syncedAt: now, error: null });
+        await startCloudListeners();
+        return { ok: true, action };
+      }
+
+      // pull: download first — promote to cloud-primary only after success.
+      const localBeforePull = state;
+      let pulledState = null;
+      try {
+        pulledState = await pullCloudToState(localBeforePull, hid);
+      } catch (pullErr) {
+        const failed = finalizeBootstrapPull({
+          pullOk: false,
+          localState: localBeforePull,
+          error: pullErr,
+        });
+        state = failed.state;
+        persist(state);
+        cloudUi.message = failed.message;
+        syncRuntime.setStatus(SyncStatus.error, failed.message, { error: failed.message });
+        return failed;
+      }
+
+      const finalized = finalizeBootstrapPull({
+        pullOk: true,
+        localState: localBeforePull,
+        pulledState,
+        userId: cloudUi.user.id,
+      });
+      state = finalized.state;
+      ensureActiveList(state);
+      persistActive();
+      cloudUi.migrationPlan = null;
+      cloudUi.migrationText = '';
+      cloudUi.message = finalized.message;
+      syncRuntime.setStatus(SyncStatus.ok, '클라우드 연결됨', {
+        syncedAt: state.cloud.lastPulledAt,
+        error: null,
+      });
+      await startCloudListeners();
+      return { ok: true, action: 'pull' };
+    } catch (err) {
+      const fail = bootstrapNetworkFailure(err);
+      cloudUi.message = fail.message;
+      // Stay local — do not flip mode or wipe device data on network errors.
+      if (state.cloud?.mode !== 'cloud-primary') {
+        state.cloud.mode = 'local';
+        persist(state);
+      }
+      syncRuntime.setStatus(SyncStatus.error, cloudUi.message, { error: cloudUi.message });
+      return fail;
+    }
+  }
+
+  async function switchActiveHousehold(nextHid) {
+    if (!nextHid || !cloudUi.user) return;
+    await syncRuntime.dispose();
+    const switched = prepareHouseholdSwitch({
+      prevState: state,
+      nextHouseholdId: nextHid,
+      userId: cloudUi.user.id,
+      loadScoped: loadScopedState,
+      saveScoped: saveScopedState,
+    });
+    state = switched.state;
+    ensureActiveList(state);
+    persistActive();
+    cloudUi.migrationPlan = null;
+    cloudUi.migrationText = '';
+    cloudUi.members = [];
+    try {
+      cloudUi.members = await listMembers(nextHid);
+    } catch {
+      cloudUi.members = [];
+    }
+    await activateCloudAsPrimary();
+  }
+
   async function refreshCloudSession() {
     if (!cloudCfg.configured) return;
     try {
@@ -227,11 +386,22 @@ export function createApp(root) {
         }
         state.cloud.userId = user.id;
         cloudUi.households = await listMyHouseholds();
+        if (!state.cloud.householdId && cloudUi.households.length === 1) {
+          state.cloud.householdId = cloudUi.households[0].householdId;
+          persist(state);
+        }
         if (state.cloud.householdId) {
           cloudUi.members = await listMembers(state.cloud.householdId);
           if (state.cloud.mode === 'cloud-primary') {
-            await pullCloudQuiet({ reason: 'session' });
-            await startCloudListeners();
+            const pulled = await pullCloudQuiet({ reason: 'session' });
+            if (!isQuietPullSuccess(pulled)) {
+              cloudUi.message =
+                pulled?.message || '클라우드 불러오기에 실패했어요. 이 기기 캐시는 그대로입니다.';
+            } else {
+              await startCloudListeners();
+            }
+          } else {
+            await activateCloudAsPrimary();
           }
         }
       } else {
@@ -386,7 +556,7 @@ export function createApp(root) {
       </section>
       ${cloudPanel()}
       <section class="panel muted">
-        <button type="button" class="ghost block" data-act="defer-cloud-auth">로컬로만 먼저 둘러볼게요</button>
+        <button type="button" class="ghost block" data-act="defer-cloud-auth">잠깐 둘러보기 (이 기기만 · 동기화 안 됨)</button>
         <p class="hint">나중에 더보기 → 우리 집 클라우드에서 언제든 로그인할 수 있어요.</p>
       </section>`;
   }
@@ -600,7 +770,10 @@ export function createApp(root) {
         badgeLabel: '저장 전',
           kicker: '오늘 저녁\n이걸로 할까요',
         title: offer.title,
-        support: '확인된 재고만 근거로 골랐어요.',
+        support:
+          offer.stockStatus === 'untracked'
+            ? '재고 등록 전에도 먼저 골라 볼 수 있어요.'
+            : '확인된 재고만 근거로 골랐어요.',
         reasons: offer.reasons,
         unknowns: offer.unknowns || [],
         actions,
@@ -613,7 +786,11 @@ export function createApp(root) {
       <div class="dinner-hero-body">
         <p class="label">오늘 저녁 추천 · 저장 전</p>
         <h2>${esc(offer.title)}</h2>
-        <p class="hint">확인된 재고만 근거로 골랐어요.</p>
+        <p class="hint">${
+          offer.stockStatus === 'untracked'
+            ? '재고 등록 전에도 먼저 골라 볼 수 있어요.'
+            : '확인된 재고만 근거로 골랐어요.'
+        }</p>
         <ul class="dinner-reasons">
           ${offer.reasons.map((r, i) => `<li><i aria-hidden="true">${i + 1}</i><span>${esc(r)}</span></li>`).join('')}
         </ul>
@@ -1012,7 +1189,7 @@ export function createApp(root) {
     const modeLabel =
       state.cloud?.mode === 'cloud-primary'
         ? '클라우드가 기본 저장소'
-        : '아직 로컬 우선 (이전 승인 전)';
+        : '클라우드 연결 대기 (로그인·집 선택 후 자동 연결)';
 
     if (!cloudUi.user) {
       return `<section class="panel cloud-panel">
@@ -1061,10 +1238,11 @@ export function createApp(root) {
       ${
         activeHid && state.cloud?.mode !== 'cloud-primary'
           ? `<div class="preview-card migration-card">
-              <strong>이 기기 기록 → 클라우드 이전</strong>
-              <p class="hint">로컬 데이터는 삭제되지 않습니다. 먼저 중복·충돌을 확인한 뒤 승인하세요.</p>
+              <strong>클라우드 연결이 필요해요</strong>
+              <p class="hint">보통은 로그인·집 선택 시 자동으로 연결됩니다. 이 기기와 클라우드에 기록이 겹치면 아래 미리보기로 확인하세요.</p>
               <div class="row-actions wrap">
-                <button type="button" class="secondary" data-act="cloud-migrate-preview" ${cloudUi.busy ? 'disabled' : ''}>이전 미리보기</button>
+                <button type="button" class="primary" data-act="cloud-activate-now" ${cloudUi.busy ? 'disabled' : ''}>지금 클라우드 연결</button>
+                <button type="button" class="secondary" data-act="cloud-migrate-preview" ${cloudUi.busy ? 'disabled' : ''}>충돌 미리보기</button>
               </div>
               ${
                 cloudUi.migrationPlan
@@ -1551,7 +1729,8 @@ export function createApp(root) {
     root.querySelectorAll('[data-act=defer-cloud-auth]').forEach((el) => {
       el.onclick = () => {
         cloudUi.deferAuth = true;
-        cloudUi.message = '로컬로 둘러보는 중이에요. 준비되면 더보기에서 로그인하세요.';
+        cloudUi.message =
+          '이 기기 임시 모드예요. 재고·장보기는 브라우저에만 남고 Supabase에는 안 올라가요. 로그인하면 클라우드가 기본 저장소가 됩니다.';
         render();
       };
     });
@@ -1589,8 +1768,11 @@ export function createApp(root) {
                 s.household.name = parsed.householdName;
               });
               cloudUi.deferAuth = false;
-              cloudUi.message = `공용 계정과 「${parsed.householdName}」 집을 만들었어요. 「이전 미리보기」로 확인한 뒤 클라우드를 기본 저장소로 쓰면 됩니다.`;
               await refreshCloudSession();
+              await activateCloudAsPrimary();
+              if (!cloudUi.message) {
+                cloudUi.message = `공용 계정과 「${parsed.householdName}」 집을 만들고 클라우드를 기본 저장소로 연결했어요.`;
+              }
             }
           } else {
             await signInWithEmail(fd.email, fd.password);
@@ -1626,8 +1808,9 @@ export function createApp(root) {
             const b = Number(fd.budgetWon);
             if (Number.isFinite(b)) s.household.budgetWon = b;
           });
-          cloudUi.message = '우리 집을 만들었어요. 「이전 미리보기」로 중복·충돌을 확인한 뒤 클라우드를 기본 저장소로 승인해 주세요.';
           await refreshCloudSession();
+          await activateCloudAsPrimary();
+          if (!cloudUi.message) cloudUi.message = '우리 집을 만들고 클라우드를 기본 저장소로 연결했어요.';
         } catch (err) {
           cloudUi.message = err.message || '가구 생성에 실패했어요.';
         } finally {
@@ -1663,15 +1846,20 @@ export function createApp(root) {
 
     root.querySelectorAll('[data-act=cloud-select-hh]').forEach((btn) => {
       btn.onclick = async () => {
-        commit((s) => {
-          s.cloud.householdId = btn.dataset.id;
-          // Selecting a household does not auto-migrate; stay local until approve.
-          if (s.cloud.mode !== 'cloud-primary') s.cloud.mode = 'local';
-        }, '집을 선택했어요. 이전이 필요하면 미리보기를 눌러 주세요.');
-        cloudUi.migrationPlan = null;
-        cloudUi.migrationText = '';
-        await refreshCloudSession();
+        const nextHid = btn.dataset.id;
+        if (!nextHid || nextHid === state.cloud?.householdId) return;
+        cloudUi.busy = true;
+        cloudUi.message = '다른 집으로 전환 중… 이전 집 데이터와 섞지 않아요.';
         render();
+        try {
+          await switchActiveHousehold(nextHid);
+          if (!cloudUi.message) setToast('집을 바꿨어요.');
+        } catch (err) {
+          cloudUi.message = err.message || '집 전환에 실패했어요.';
+        } finally {
+          cloudUi.busy = false;
+          render();
+        }
       };
     });
 
@@ -1694,8 +1882,10 @@ export function createApp(root) {
           setToast('클라우드 기본 저장소로 이전한 뒤에 불러올 수 있어요.');
           return;
         }
-        await pullCloudQuiet({ reason: 'manual' });
-        cloudUi.message = '클라우드 최신 데이터를 반영했어요.';
+        const pulled = await pullCloudQuiet({ reason: 'manual' });
+        cloudUi.message = isQuietPullSuccess(pulled)
+          ? '클라우드 최신 데이터를 반영했어요.'
+          : pulled?.message || '불러오기에 실패했어요. 이 기기 데이터는 그대로 두었어요.';
       };
     }
 
@@ -1729,6 +1919,21 @@ export function createApp(root) {
       };
     }
 
+    const activateNow = root.querySelector('[data-act=cloud-activate-now]');
+    if (activateNow) {
+      activateNow.onclick = async () => {
+        if (!state.cloud?.householdId) return;
+        cloudUi.busy = true;
+        render();
+        try {
+          await activateCloudAsPrimary();
+        } finally {
+          cloudUi.busy = false;
+          render();
+        }
+      };
+    }
+
     const migratePreview = root.querySelector('[data-act=cloud-migrate-preview]');
     if (migratePreview) {
       migratePreview.onclick = async () => {
@@ -1736,12 +1941,15 @@ export function createApp(root) {
         cloudUi.busy = true;
         render();
         try {
-          ensureDeviceLocalBackup(state);
-          const snap = await fetchCloudSnapshot(state, state.cloud.householdId);
-          const plan = buildMigrationPlan(state, snap);
-          cloudUi.migrationPlan = plan;
-          cloudUi.migrationText = formatMigrationPreview(plan);
-          cloudUi.message = '이전 미리보기를 준비했어요. 내용을 확인한 뒤 승인해 주세요.';
+          await activateCloudAsPrimary({ forcePreview: true });
+          if (!cloudUi.migrationPlan) {
+            ensureDeviceLocalBackup(state);
+            const snap = await fetchCloudSnapshot(state, state.cloud.householdId);
+            const plan = buildMigrationPlan(state, snap);
+            cloudUi.migrationPlan = plan;
+            cloudUi.migrationText = formatMigrationPreview(plan);
+            cloudUi.message = '이전 미리보기를 준비했어요. 내용을 확인한 뒤 승인해 주세요.';
+          }
         } catch (err) {
           cloudUi.message = err.message || '미리보기 실패';
         } finally {
@@ -1779,7 +1987,12 @@ export function createApp(root) {
           cloudUi.message = `이전 완료 (장보기 ${result.counts.shoppingItems}, 재고 ${result.counts.inventory}, 프로필 ${result.counts.familyProfiles}). 이제 이 계정이 기본 저장소예요.`;
           syncRuntime.setStatus(SyncStatus.ok, '이전·동기화 완료', { syncedAt: now, error: null });
           await startCloudListeners();
-          await pullCloudQuiet({ reason: 'post-migrate' });
+          const pulled = await pullCloudQuiet({ reason: 'post-migrate' });
+          if (!isQuietPullSuccess(pulled)) {
+            cloudUi.message =
+              (cloudUi.message ? `${cloudUi.message} ` : '') +
+              (pulled?.message || '올린 뒤 다시 불러오기는 실패했어요. 로컬·클라우드 원본은 유지됩니다.');
+          }
         } catch (err) {
           cloudUi.message = err.message || '이전에 실패했어요.';
           syncRuntime.setStatus(SyncStatus.error, cloudUi.message, { error: cloudUi.message });
