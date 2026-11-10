@@ -4,7 +4,7 @@ import { seedSauces, seedState } from './seed.js';
 
 export function createEmptyState() {
   return {
-    version: 9,
+    version: 10,
     household: {
       id: uid(),
       name: '우리 집',
@@ -163,6 +163,36 @@ export function migrateState(raw) {
       }
     }
     state.version = 9;
+  }
+  if (state.version < 10) {
+    // Add 샤브샤브 pattern + dipping sauces when catalog is still on seed dinner set.
+    const patterns = state.cookingPatterns || [];
+    const hasShabu = patterns.some((p) => p?.name === '샤브샤브' || p?.method === 'shabu');
+    if (!hasShabu) {
+      patterns.push({
+        id: uid(),
+        name: '샤브샤브',
+        method: 'shabu',
+        effort: 'low',
+        notes: '양배추 채썰고 우삼겹·야채 넣어 가볍게',
+      });
+      state.cookingPatterns = patterns;
+    }
+    const sauceNames = new Set((state.sauces || []).map((s) => s.name));
+    const shabuSauces = seedSauces().filter((s) => (s.forPatterns || []).includes('샤브샤브'));
+    for (const s of shabuSauces) {
+      if (!sauceNames.has(s.name)) {
+        state.sauces = [...(state.sauces || []), s];
+        sauceNames.add(s.name);
+      }
+    }
+    for (const s of state.sauces || []) {
+      if (!s.visualKey) {
+        if (/폰즈|ponzu/i.test(s.name)) s.visualKey = 'ponzu';
+        else if (/참깨/.test(s.name) && (s.forPatterns || []).includes('샤브샤브')) s.visualKey = 'sesame';
+      }
+    }
+    state.version = 10;
   }
   return state;
 }

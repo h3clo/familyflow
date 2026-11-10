@@ -8,7 +8,7 @@ import { seedState } from '../domain/seed.js';
 import { ensureActiveList } from '../domain/shopping.js';
 
 const DEFAULT_MEMBER_NAMES = new Set(['나', '관리자']);
-const SEED_PATTERN_NAMES = ['간단 아침', '야채구이', '야채찜'];
+const SEED_PATTERN_NAMES = ['간단 아침', '샤브샤브', '야채구이', '야채찜'];
 const SEED_SAUCE_NAMES = [
   '부추장',
   '마늘 간장 소스',
@@ -20,6 +20,8 @@ const SEED_SAUCE_NAMES = [
   '양꼬치 양념',
   '허니머스터드 소스',
   '넛맥 올리브유 시즈닝',
+  '참깨 소스',
+  '폰즈 소스',
 ].sort();
 
 /**

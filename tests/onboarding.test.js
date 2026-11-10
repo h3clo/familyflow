@@ -55,6 +55,7 @@ test('buildSyncableFootprint ignores default owner-only seed member', () => {
     cookingPatterns: [
       { name: '야채찜' },
       { name: '야채구이' },
+      { name: '샤브샤브' },
       { name: '간단 아침' },
     ],
     sauces: [
@@ -68,6 +69,8 @@ test('buildSyncableFootprint ignores default owner-only seed member', () => {
       { name: '양꼬치 양념' },
       { name: '허니머스터드 소스' },
       { name: '넛맥 올리브유 시즈닝' },
+      { name: '참깨 소스' },
+      { name: '폰즈 소스' },
     ],
   });
   assert.equal(fp.transactional, 0);

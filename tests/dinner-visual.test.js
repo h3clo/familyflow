@@ -6,11 +6,14 @@ const state = {
   cookingPatterns: [
     { id: 'p1', name: '야채찜', method: 'steam' },
     { id: 'p2', name: '야채구이', method: 'roast' },
+    { id: 'p3', name: '샤브샤브', method: 'shabu' },
   ],
   sauces: [
     { id: 's1', name: '마늘 간장 소스', visualKey: 'garlic-soy', forPatterns: ['야채찜'] },
     { id: 's2', name: '간장마늘 양념', visualKey: 'garlic-soy', forPatterns: ['야채구이'] },
     { id: 's3', name: '넛맥 올리브유 시즈닝', visualKey: 'nutmeg', forPatterns: ['야채구이'] },
+    { id: 's4', name: '폰즈 소스', visualKey: 'ponzu', forPatterns: ['샤브샤브'] },
+    { id: 's5', name: '참깨 소스', visualKey: 'sesame', forPatterns: ['샤브샤브'] },
   ],
 };
 
@@ -42,11 +45,23 @@ test('returns no image for unknown patterns', () => {
   assert.equal(v.imageSrc, null);
 });
 
+test('maps 샤브샤브 + ponzu/sesame to prebaked assets', () => {
+  assert.match(
+    resolveDinnerVisual(state, { patternName: '샤브샤브', sauceName: '폰즈 소스' }).imageSrc,
+    /dinner\/shabu-ponzu\.jpg\?v=/,
+  );
+  assert.match(
+    resolveDinnerVisual(state, { patternName: '샤브샤브', sauceName: '참깨 소스' }).imageSrc,
+    /dinner\/shabu-sesame\.jpg\?v=/,
+  );
+});
+
 test('sauceKeyFromName maps catalog names', () => {
   assert.equal(sauceKeyFromName('스리라차 소스'), 'sriracha');
   assert.equal(sauceKeyFromName('부추장'), 'buchujang');
   assert.equal(sauceKeyFromName('토마토 양파 소스'), 'tomato-onion');
   assert.equal(sauceKeyFromName('양꼬치 양념'), 'lamb-skewer');
+  assert.equal(sauceKeyFromName('폰즈 소스'), 'ponzu');
   assert.equal(sauceKeyFromName('없는소스'), null);
 });
 

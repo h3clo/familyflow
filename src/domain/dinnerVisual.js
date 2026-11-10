@@ -7,11 +7,12 @@ import { APP_BUILD_ID } from '../lib/buildId.js';
 
 const STEAM_RE = /야채찜|찜/;
 const ROAST_RE = /야채구이|구이/;
+const SHABU_RE = /샤브/;
 
 /** sauce visualKey or name → file stem under public/dinner/ */
 const SAUCE_KEYS = [
   { match: /부추/, key: 'buchujang' },
-  { match: /참깨\s*간장/, key: 'sesame-soy' },
+  { match: /참깨/, key: 'sesame' },
   { match: /겨자\s*간장/, key: 'mustard-soy' },
   { match: /스리라차/, key: 'sriracha' },
   { match: /토마토/, key: 'tomato-onion' },
@@ -19,6 +20,7 @@ const SAUCE_KEYS = [
   { match: /허니|머스터드|mustard/i, key: 'honey-mustard' },
   // Match legacy 「넛맥 버터 시즈닝」 and current 「넛맥 올리브유 시즈닝」.
   { match: /넛맥|육두구|nutmeg/i, key: 'nutmeg' },
+  { match: /폰즈|ponzu/i, key: 'ponzu' },
   // garlic-soy shared by 찜「마늘 간장」and 구이「간장마늘」
   { match: /마늘\s*간장|간장\s*마늘|마늘간장|간장마늘/, key: 'garlic-soy' },
 ];
@@ -85,12 +87,20 @@ export function sauceAsset(sauceName) {
 
 function prebakedAsset(patternName, method, visualKey) {
   const kind =
-    STEAM_RE.test(patternName) || method === 'steam'
-      ? 'steam'
-      : ROAST_RE.test(patternName) || method === 'roast'
-        ? 'roast'
-        : null;
+    SHABU_RE.test(patternName) || method === 'shabu'
+      ? 'shabu'
+      : STEAM_RE.test(patternName) || method === 'steam'
+        ? 'steam'
+        : ROAST_RE.test(patternName) || method === 'roast'
+          ? 'roast'
+          : null;
   if (!kind) return null;
-  if (visualKey) return `${kind}-${visualKey}.jpg`;
+  if (visualKey) {
+    // Steam/roast sesame sauces historically used sesame-soy filename.
+    if ((kind === 'steam' || kind === 'roast') && visualKey === 'sesame') {
+      return `${kind}-sesame-soy.jpg`;
+    }
+    return `${kind}-${visualKey}.jpg`;
+  }
   return `${kind}.jpg`;
 }

@@ -37,7 +37,7 @@ test('v9 migrates legacy 넛맥 버터 시즈닝 rows without dropping sauce id'
   };
 
   const m = migrateState(raw);
-  assert.equal(m.version, 9);
+  assert.equal(m.version, 10);
   assert.equal(m.sauces[0].id, 'keep-me');
   assert.equal(m.sauces[0].name, '넛맥 올리브유 시즈닝');
   assert.ok(m.sauces[0].components.every((c) => !/버터/.test(c.name)));

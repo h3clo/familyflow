@@ -1,6 +1,6 @@
 /**
  * Home dinner recommendation (ranking v2).
- * Prefer confirmed protein stock; if none, starter pattern×protein (untracked).
+ * Candidates are pattern×sauce (hero photo) with a paired protein as 곁들임.
  * Never invents inventory rows. Changes go through ActionProposal only.
  */
 import { createProposal } from './proposals.js';
@@ -10,12 +10,29 @@ import {
   compareDinnerScores,
 } from './dinnerRank.js';
 
-const PROTEIN_RE = /닭|돼지|소고기|두부|고기|고등어|삼치|연어|계란|달걀/;
+const PROTEIN_RE =
+  /닭다리|닭고기|닭|우삼겹|대패|목살|삼겹|돼지|소고기|연어|고등어|삼치|두부|고기|계란|달걀/;
 
 /** Early-home defaults when the household has not registered protein stock yet. */
-export const STARTER_PROTEINS = ['닭고기', '고등어', '돼지고기', '두부'];
+export const STARTER_PROTEINS = [
+  '닭다리살',
+  '연어',
+  '고등어',
+  '우삼겹',
+  '대패삼겹살',
+  '목살',
+];
+
+/** Soft pairing hints — first match in stock/starters wins for a pattern. */
+const PATTERN_PROTEIN_PREFER = {
+  샤브샤브: [/우삼겹/, /대패/, /목살/, /연어/, /닭/],
+  야채찜: [/닭/, /연어/, /고등어/, /목살/],
+  야채구이: [/목살/, /닭/, /대패/, /고등어/, /우삼겹/],
+};
 
 export const UNTRACKED_STOCK_LABEL = '재고 미확인 · 가정 제안';
+
+const DINNER_METHODS = new Set(['steam', 'roast', 'shabu']);
 
 /**
  * Hero title is the cooking pattern only.
@@ -51,7 +68,9 @@ export function buildDinnerHomeOffer(state, opts = {}) {
     };
   }
 
-  const candidates = listDinnerCandidates(state);
+  const ranked = listDinnerCandidates(state);
+  // 「바꾸기」는 히어로 사진(패턴×소스) 단위 — 같은 사진에 단백질만 다른 행은 접는다.
+  const candidates = uniqueByPatternSauce(ranked);
   if (!candidates.length) {
     return {
       status: 'empty',
@@ -193,7 +212,10 @@ export function createStockRegisterProposalFromUserInput(input = {}) {
   return { ok: true, error: null, proposal };
 }
 
-/** Deterministic candidates with blended ranking (not absolute stock-first). */
+/**
+ * Full ranked list (protein × pattern × sauce) for scoring / tests.
+ * Home swap uses uniqueByPatternSauce() so each hero photo appears once.
+ */
 export function listDinnerCandidates(state) {
   const inventory = state.inventory || [];
   const patterns = state.cookingPatterns || [];
@@ -201,7 +223,7 @@ export function listDinnerCandidates(state) {
   const recentProteins = recentProteinHints(state);
   const prefs = parseFamilyPreferenceNotes(state.members);
 
-  const dinnerPatterns = patterns.filter((p) => p.method === 'steam' || p.method === 'roast');
+  const dinnerPatterns = patterns.filter((p) => DINNER_METHODS.has(p.method));
   const usePatterns = dinnerPatterns.length
     ? dinnerPatterns
     : patterns[0]
@@ -234,11 +256,15 @@ export function listDinnerCandidates(state) {
 
   for (const source of proteinSources) {
     for (const pattern of usePatterns) {
+      // Soft pairing for untracked starters only — confirmed stock always stays visible.
+      if (!source.tracked && !proteinFitsPattern(source.name, pattern?.name || '')) {
+        const someoneFits = proteinSources.some((s) => proteinFitsPattern(s.name, pattern?.name || ''));
+        if (someoneFits) continue;
+      }
+
       const saucePool = pattern
         ? sauces.filter((s) => (s.forPatterns || []).includes(pattern.name))
         : [];
-      // One candidate per pattern×sauce so 「바꾸기」 cycles hero photos (not just protein).
-      // Soft preference only reorders — it must not collapse every row onto garlic-soy.
       const preferred = pickPreferredSauce(saucePool, source.name);
       const sauceChoices = saucePool.length
         ? preferred
@@ -330,6 +356,60 @@ export function listDinnerCandidates(state) {
   return candidates;
 }
 
+/** Keep best protein pairing for each hero photo (pattern×sauce). */
+export function uniqueByPatternSauce(candidates) {
+  const seen = new Map();
+  for (const c of candidates || []) {
+    const key = `${c.patternId || c.patternName || ''}|${c.sauceId || c.sauceName || ''}`;
+    const prev = seen.get(key);
+    if (!prev || betterPatternPairing(c, prev)) seen.set(key, c);
+  }
+  return [...seen.values()].sort(compareDinnerScores);
+}
+
+function proteinFitScore(proteinName, patternName) {
+  const prefs = PATTERN_PROTEIN_PREFER[patternName] || [];
+  for (let i = 0; i < prefs.length; i++) {
+    if (prefs[i].test(proteinName || '')) return prefs.length - i;
+  }
+  return 0;
+}
+
+function betterPatternPairing(next, prev) {
+  const fitDelta =
+    proteinFitScore(next.protein, next.patternName) - proteinFitScore(prev.protein, prev.patternName);
+  if (fitDelta !== 0) return fitDelta > 0;
+  return (next.score?.total || 0) > (prev.score?.total || 0);
+}
+
+function proteinFitsPattern(proteinName, patternName) {
+  const prefs = PATTERN_PROTEIN_PREFER[patternName];
+  if (!prefs?.length) return true;
+  return prefs.some((re) => re.test(proteinName));
+}
+
+/** Soft sauce ordering hint (does not drop other sauces). */
+function pickPreferredSauce(pool, protein) {
+  if (!pool?.length) return null;
+  if (/닭/.test(protein || '')) {
+    const garlicSoy = pool.find((s) => /간장마늘|마늘\s*간장|마늘간장/.test(s.name));
+    if (garlicSoy) return garlicSoy;
+    const nutmeg = pool.find((s) => /넛맥|육두구/.test(s.name));
+    if (nutmeg) return nutmeg;
+  }
+  if (/양|lamb/i.test(protein || '')) {
+    const lamb = pool.find((s) => /양꼬치|쯔란/.test(s.name));
+    if (lamb) return lamb;
+  }
+  if (/우삼겹|대패|목살/.test(protein || '')) {
+    const ponzu = pool.find((s) => /폰즈/.test(s.name));
+    if (ponzu) return ponzu;
+    const sesame = pool.find((s) => /참깨/.test(s.name));
+    if (sesame) return sesame;
+  }
+  return null;
+}
+
 /**
  * Recent-meal duplication signal is **protein-name based only**
  * (todayDinner.protein + mealPlan dinner slot proteins).
@@ -358,25 +438,6 @@ function guessUnit(name) {
   if (/고등어|삼치|연어/.test(name)) return '마리';
   if (/계란|달걀/.test(name)) return '개';
   if (/두부/.test(name)) return '모';
+  if (/우삼겹|대패|목살|삼겹|닭다리/.test(name)) return '팩';
   return '개';
-}
-
-/**
- * Soft preference only (ordering hint). Do not collapse every protein onto garlic-soy —
- * that made 「바꾸기」 show just roast/steam garlic photos despite 12 prebakes on disk.
- */
-function pickPreferredSauce(pool, protein) {
-  if (!pool?.length) return null;
-  if (/닭/.test(protein || '')) {
-    const garlicSoy = pool.find((s) => /간장마늘|마늘\s*간장|마늘간장/.test(s.name));
-    if (garlicSoy) return garlicSoy;
-    // Prefer olive-oil nutmeg label; still accept legacy butter-named rows.
-    const nutmeg = pool.find((s) => /넛맥|육두구/.test(s.name));
-    if (nutmeg) return nutmeg;
-  }
-  if (/양|lamb/i.test(protein || '')) {
-    const lamb = pool.find((s) => /양꼬치|쯔란/.test(s.name));
-    if (lamb) return lamb;
-  }
-  return null;
 }
