@@ -19,7 +19,7 @@ test('maps 야채찜 + garlic soy to prebaked steam composite', () => {
     patternName: '야채찜',
     sauceName: '마늘 간장 소스',
   });
-  assert.match(v.imageSrc, /dinner\/steam-garlic-soy\.jpg$/);
+  assert.match(v.imageSrc, /dinner\/steam-garlic-soy\.jpg\?v=/);
   assert.equal(v.sauceShortName, '마늘 간장 소스');
   assert.equal(v.sauceTextureSrc, null);
 });
@@ -29,12 +29,12 @@ test('maps 야채구이 + nutmeg to prebaked roast composite', () => {
     patternName: '야채구이',
     sauceName: '넛맥 버터 시즈닝',
   });
-  assert.match(v.imageSrc, /dinner\/roast-nutmeg\.jpg$/);
+  assert.match(v.imageSrc, /dinner\/roast-nutmeg\.jpg\?v=/);
 });
 
 test('falls back to pattern-only asset when sauce unknown', () => {
   const v = resolveDinnerVisual(state, { patternName: '야채구이', sauceName: null });
-  assert.match(v.imageSrc, /dinner\/roast\.jpg$/);
+  assert.match(v.imageSrc, /dinner\/roast\.jpg\?v=/);
 });
 
 test('returns no image for unknown patterns', () => {
