@@ -372,6 +372,21 @@ html {
   max-width: calc(50% - 24px);
   background: rgba(15, 23, 42, 0.88);
 }
+.dinner-sauce-img {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  z-index: 3;
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.35);
+  background: #fff;
+  pointer-events: none;
+  user-select: none;
+}
 .dinner-hero-body .label {
   color: #64748b;
   font-size: 0.72rem;

@@ -917,7 +917,15 @@ export function createApp(root) {
         </div>
         <h1 class="dinner-kicker">${esc(kicker)}</h1>
         <span class="dinner-media-badge">${esc(badgeLabel)}</span>
-        ${visual.sauceLabel ? `<span class="dinner-sauce">${esc(visual.sauceLabel)}</span>` : ''}
+        ${
+          visual.sauceImageSrc
+            ? `<img class="dinner-sauce-img" src="${esc(visual.sauceImageSrc)}" alt="${esc(
+                visual.sauceLabel || '소스',
+              )}" width="72" height="72" loading="lazy" />`
+            : visual.sauceLabel
+              ? `<span class="dinner-sauce">${esc(visual.sauceLabel)}</span>`
+              : ''
+        }
       </div>
       <div class="dinner-hero-body">
         <p class="label">오늘 저녁 추천</p>

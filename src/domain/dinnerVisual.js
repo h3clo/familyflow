@@ -1,10 +1,20 @@
 /**
- * Dinner hero visuals — curated pattern photos + sauce as text overlay.
- * Only 야채찜 / 야채구이 assets for now. No runtime AI image generation.
+ * Dinner hero visuals — curated pattern photos + sauce PNG overlays.
+ * Only 야채찜 / 야채구이 pattern assets for now. No runtime AI image generation.
  */
 
 const STEAM_RE = /야채찜|찜/;
 const ROAST_RE = /야채구이|구이/;
+
+/** Seed sauce name → static PNG under public/dinner/sauces/ */
+const SAUCE_ASSETS = [
+  { match: /닭\s*양념|마늘간장설탕/, file: 'chicken-marinade.png' },
+  { match: /마늘간장/, file: 'garlic-soy.png' },
+  { match: /토마토/, file: 'tomato.png' },
+  { match: /스리라차/, file: 'sriracha.png' },
+  { match: /부추/, file: 'chive.png' },
+  { match: /양꼬치|시즈닝/, file: 'lamb-spice.png' },
+];
 
 /**
  * @param {object} state
@@ -21,21 +31,31 @@ export function resolveDinnerVisual(state, dinnerLike = {}) {
   const method = pattern?.method || '';
   const asset = patternAsset(patternName, method);
   const base = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/';
+  const sauceName = String(dinnerLike.sauceName || '').trim();
+  const sauceFile = sauceAsset(sauceName);
 
   return {
     patternName,
     method: method || null,
     imageSrc: asset ? `${base}dinner/${asset}` : null,
-    sauceLabel: dinnerLike.sauceName ? `소스 · ${shortSauceName(dinnerLike.sauceName)}` : null,
+    sauceLabel: sauceName ? `소스 · ${shortSauceName(sauceName)}` : null,
+    sauceImageSrc: sauceFile ? `${base}dinner/sauces/${sauceFile}` : null,
   };
 }
 
-/** Keep overlay chips short so they don't collide with the headline. */
-function shortSauceName(name) {
+/** Keep fallback text chips short so they don't collide with the headline. */
+export function shortSauceName(name) {
   const raw = String(name || '').trim();
   const cut = raw.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
   if (cut.length <= 14) return cut;
   return `${cut.slice(0, 13)}…`;
+}
+
+export function sauceAsset(sauceName) {
+  const raw = String(sauceName || '').trim();
+  if (!raw) return null;
+  const hit = SAUCE_ASSETS.find((row) => row.match.test(raw));
+  return hit?.file || null;
 }
 
 function patternAsset(patternName, method) {
