@@ -876,18 +876,13 @@ export function createApp(root) {
   }
 
   function dinnerStage({ visual, badgeLabel, kicker, title, support, stockChip = '', actions }) {
-    const sauceAlt = visual.sauceShortName ? `소스 · ${visual.sauceShortName}` : '소스';
+    const mediaLabel = [visual.patternName, visual.sauceShortName ? `소스 ${visual.sauceShortName}` : '']
+      .filter(Boolean)
+      .join(' · ');
     return `<section class="dinner-stage" aria-label="오늘 저녁">
       <div class="dinner-media" style="background-image:url('${esc(visual.imageSrc)}')" role="img" aria-label="${esc(
-        visual.patternName || '저녁 패턴',
+        mediaLabel || '저녁 패턴',
       )}">
-        ${
-          visual.sauceTextureSrc
-            ? `<img class="dinner-sauce-texture" src="${esc(visual.sauceTextureSrc)}" alt="${esc(
-                sauceAlt,
-              )}" decoding="async" />`
-            : ''
-        }
         <div class="dinner-media-top">
           <p class="dinner-brand">Family Flow</p>
           <div class="dinner-media-meta">
