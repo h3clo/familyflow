@@ -28,12 +28,37 @@ export default defineConfig(({ mode }) => {
       port: 5174,
       strictPort: true,
       proxy,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
     },
     preview: {
       host: '127.0.0.1',
       port: 4174,
       strictPort: true,
       proxy,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
     },
+    build: {
+      // Hashed filenames already bust CDN/browser cache when index.html updates.
+      assetsDir: 'assets',
+    },
+    plugins: [
+      {
+        name: 'familyflow-html-cache-headers',
+        transformIndexHtml(html) {
+          // Hint browsers not to pin the shell document; GH Pages CDN still ~10m.
+          return html.replace(
+            '<head>',
+            `<head>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />`,
+          );
+        },
+      },
+    ],
   };
 });
