@@ -32,6 +32,7 @@ import {
 import { ProposalError } from './domain/proposals.js';
 import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
 import { buildDinnerHomeOffer } from './domain/dinnerHome.js';
+import { resolveDinnerVisual } from './domain/dinnerVisual.js';
 import { nextFoodAction, normalizeFoodNav } from './domain/foodHub.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
 import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
@@ -519,12 +520,16 @@ export function createApp(root) {
   function dinnerHomeBlock(dinnerHome) {
     if (dinnerHome.status === 'confirmed') {
       const dinner = dinnerHome.dinner;
-      return `<section class="panel dinner-hero" aria-label="오늘 저녁">
-        <p class="label">오늘 저녁 · 확정</p>
-        <h2>${esc(dinner.title)}</h2>
-        <p class="hint">${dinner.protein ? esc(dinner.protein) + ' · ' : ''}${
-          dinner.sauceName ? '소스 ' + esc(dinner.sauceName) : '소스 자유'
-        }</p>
+      const visual = resolveDinnerVisual(state, dinner);
+      return `<section class="panel dinner-hero ${visual.imageSrc ? 'has-media' : ''}" aria-label="오늘 저녁">
+        ${dinnerMedia(visual, '확정')}
+        <div class="dinner-hero-body">
+          <p class="label">오늘 저녁 · 확정</p>
+          <h2>${esc(dinner.title)}</h2>
+          <p class="hint">${dinner.protein ? esc(dinner.protein) : '재료 확인됨'}${
+            dinner.sauceName ? '' : ' · 소스 자유'
+          }</p>
+        </div>
       </section>`;
     }
 
@@ -540,23 +545,38 @@ export function createApp(root) {
     }
 
     const offer = dinnerHome.offer;
-    return `<section class="panel dinner-hero" aria-label="오늘 저녁 추천">
-      <p class="label">오늘 저녁 추천 · 저장 전</p>
-      <h2>${esc(offer.title)}</h2>
-      <ul class="dinner-reasons">
-        ${offer.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}
-      </ul>
-      ${
-        offer.unknowns?.length
-          ? `<p class="hint">${offer.unknowns.map((u) => esc(u)).join(' · ')}</p>`
-          : ''
-      }
-      <div class="suggest-actions dinner-actions">
-        <button type="button" class="primary" data-act="dinner-accept">이대로</button>
-        <button type="button" class="secondary" data-act="dinner-swap" ${offer.hasAlt ? '' : 'disabled'}>바꾸기</button>
+    const visual = resolveDinnerVisual(state, offer);
+    return `<section class="panel dinner-hero ${visual.imageSrc ? 'has-media' : ''}" aria-label="오늘 저녁 추천">
+      ${dinnerMedia(visual, '저장 전')}
+      <div class="dinner-hero-body">
+        <p class="label">오늘 저녁 추천 · 저장 전</p>
+        <h2>${esc(offer.title)}</h2>
+        <p class="hint">확인된 재고만 근거로 골랐어요.</p>
+        <ul class="dinner-reasons">
+          ${offer.reasons.map((r, i) => `<li><i aria-hidden="true">${i + 1}</i><span>${esc(r)}</span></li>`).join('')}
+        </ul>
+        ${
+          offer.unknowns?.length
+            ? `<p class="hint">${offer.unknowns.map((u) => esc(u)).join(' · ')}</p>`
+            : ''
+        }
+        <div class="dinner-actions">
+          <button type="button" class="primary block" data-act="dinner-accept">이대로</button>
+          <button type="button" class="dinner-swap" data-act="dinner-swap" ${offer.hasAlt ? '' : 'disabled'}>다른 후보로 바꾸기</button>
+          <p class="fine">승인 후에만 저장돼요</p>
+        </div>
       </div>
-      <p class="hint">이대로는 미리보기로 열리고, 승인한 뒤에만 저장돼요.</p>
     </section>`;
+  }
+
+  function dinnerMedia(visual, badge) {
+    if (!visual?.imageSrc) return '';
+    return `<div class="dinner-media" style="background-image:url('${esc(visual.imageSrc)}')" role="img" aria-label="${esc(
+      visual.patternName || '저녁 패턴',
+    )}">
+      <span class="dinner-media-badge">${esc(badge)}</span>
+      ${visual.sauceLabel ? `<span class="dinner-sauce">${esc(visual.sauceLabel)}</span>` : ''}
+    </div>`;
   }
 
   function chatPanel() {
