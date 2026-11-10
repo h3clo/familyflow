@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <title>Family Flow — 캐시 초기화</title>
+    <meta name="robots" content="noindex" />
+    <title>Family Flow — 개발용 캐시 초기화</title>
     <style>
       body {
         font-family: "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
@@ -14,20 +15,7 @@
         line-height: 1.5;
         color: #0f172a;
       }
-      button {
-        font: inherit;
-        font-weight: 700;
-        border: 0;
-        border-radius: 12px;
-        background: #0f172a;
-        color: #f8fafc;
-        padding: 0.85rem 1.1rem;
-        width: 100%;
-        cursor: pointer;
-      }
-      p {
-        color: #64748b;
-      }
+      p { color: #64748b; }
       #log {
         white-space: pre-wrap;
         font-size: 0.85rem;
@@ -37,16 +25,18 @@
     </style>
   </head>
   <body>
-    <h1>캐시 초기화</h1>
-    <p>예전 화면이 남아 있을 때 한 번만 누르세요. 서비스 워커와 사이트 캐시를 지운 뒤 홈으로 이동합니다.</p>
-    <button type="button" id="go">캐시 지우고 홈으로</button>
-    <div id="log" role="status"></div>
+    <h1>개발용 캐시 초기화</h1>
+    <p>
+      일반 사용(사파리 홈 화면 추가 웹앱)은 앱을 다시 열면 새 배포를 자동으로 받습니다.
+      이 페이지는 개발·디버그용입니다.
+    </p>
+    <div id="log" role="status">초기화 중…</div>
     <script>
       const log = (msg) => {
         document.getElementById('log').textContent += msg + '\n';
       };
 
-      async function clearAll() {
+      (async () => {
         const base = location.pathname.replace(/clear-cache\.html$/, '');
         try {
           if ('serviceWorker' in navigator) {
@@ -63,15 +53,7 @@
           log('오류: ' + (err && err.message ? err.message : String(err)));
         }
         location.replace(base + '?nocache=' + Date.now());
-      }
-
-      document.getElementById('go').addEventListener('click', () => {
-        document.getElementById('go').disabled = true;
-        clearAll();
-      });
-
-      // Auto-run so a single visit is enough.
-      clearAll();
+      })();
     </script>
   </body>
 </html>

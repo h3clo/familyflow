@@ -5,9 +5,9 @@
 
 ## 현재 시작점 (2026-11-11 Asia/Seoul)
 
-**방금 완료:** SW 캐시 버스팅(#18) · `clear-cache.html` 탈출구(#19) 배포.
+**방금 완료:** 소스 PNG 오버레이(#22). 이어서 사파리 홈화면 PWA 자동 갱신.
 
-**지금 작업:** _(대기열 P1 중 승인된 항목)_
+**지금 작업:** PWA가 `build.json`으로 새 배포를 감지해 자동 reload (수동 clear-cache URL 안내 금지).
 
 **다음 행동 (한 가지):** 실계정 동기화 E2E(격리 계정) 또는 sandbox URL 격리 구현 중 승인된 항목.
 
@@ -22,7 +22,7 @@
 | 클라우드 자동 연결 | 배포 | PR #10 |
 | Dinner ranking v2 · 확인 후 재고 등록 | 배포 | PR #11 |
 | UI/비주얼(토큰 미확정) | 배포 | dinner 에셋 |
-| Pages SW 캐시 | 배포 | #18 network-first · #19 `/clear-cache.html` |
+| Pages SW 캐시 | 배포 | #18 network-first · PWA `build.json` 자동 갱신 (홈화면 웹앱) |
 
 ## 검증됨 vs 미검증
 
