@@ -49,6 +49,13 @@ a { color: var(--brand); }
   animation: rise 320ms var(--ease);
   overflow-x: clip;
 }
+@media (min-width: 900px) {
+  .shell {
+    max-width: 840px;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
 .shell-immersive {
   padding-top: 0;
 }
@@ -374,8 +381,27 @@ a { color: var(--brand); }
   font: inherit;
   background: #fff;
 }
-.dinner-reasons {
+.dinner-reasons-wrap {
   margin: 14px 0 0;
+  display: grid;
+  gap: 8px;
+}
+.dinner-reasons-more {
+  border-radius: var(--radius-sm);
+  background: rgba(15, 23, 42, 0.04);
+  padding: 2px 10px 8px;
+}
+.dinner-reasons-more summary {
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 650;
+  color: var(--muted);
+  padding: 8px 0;
+  list-style: none;
+}
+.dinner-reasons-more summary::-webkit-details-marker { display: none; }
+.dinner-reasons {
+  margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
@@ -610,17 +636,19 @@ details summary { cursor: pointer; font-weight: 700; }
 .status-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
   max-width: 100%;
 }
 .status-chips button {
   border: 1px solid var(--line);
   background: #fff;
-  border-radius: 8px;
-  padding: 4px 8px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  flex: 0 1 auto;
+  border-radius: 10px;
+  padding: 8px 12px;
+  min-height: 40px;
+  font-size: 0.8rem;
+  font-weight: 650;
+  flex: 1 1 calc(50% - 6px);
+  max-width: 100%;
 }
 .status-chips button.on {
   background: var(--brand);
@@ -874,7 +902,7 @@ form.cloud-auth {
   left: 50%;
   transform: translateX(-50%);
   bottom: 0;
-  width: min(720px, 100%);
+  width: min(840px, 100%);
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
@@ -888,6 +916,7 @@ form.cloud-auth {
 .tabbar button {
   border: 0;
   background: transparent;
+  min-height: 48px;
   padding: 10px 4px;
   border-radius: 12px;
   color: var(--muted);
