@@ -45,7 +45,7 @@ a { color: var(--brand); }
   max-width: 720px;
   margin: 0 auto;
   min-height: 100dvh;
-  padding: 18px 16px calc(108px + env(safe-area-inset-bottom));
+  padding: 16px 16px calc(110px + env(safe-area-inset-bottom));
   animation: rise 320ms var(--ease);
   overflow-x: clip;
 }
@@ -55,6 +55,11 @@ a { color: var(--brand); }
     padding-left: 24px;
     padding-right: 24px;
   }
+}
+.main {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
 }
 .shell-immersive {
   padding-top: 0;
@@ -74,9 +79,9 @@ a { color: var(--brand); }
 .top {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .top > div:first-child {
   min-width: 0;
@@ -161,7 +166,6 @@ a { color: var(--brand); }
 .badge-row { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 .sync-badge.sync-ai { color: #334155; border-color: #cbd5e1; background: #f8fafc; }
 
-.main { display: grid; gap: 12px; }
 .lede { margin: 0 0 4px; color: var(--muted); font-size: 0.92rem; }
 .label { margin: 0; color: var(--muted); font-size: 0.76rem; font-weight: 600; }
 .hint { margin: 8px 0 0; color: var(--muted); font-size: 0.84rem; }
@@ -182,20 +186,24 @@ a { color: var(--brand); }
 .budget-card {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  align-items: start;
+  gap: 10px;
+  align-items: stretch;
 }
 .budget-card > div {
   min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 4px;
 }
 .budget-value {
-  margin: 4px 0 0;
+  margin: 0;
   font-weight: 800;
-  font-size: 0.98rem;
+  font-size: 0.95rem;
   font-family: var(--display);
   letter-spacing: -0.02em;
   word-break: keep-all;
   overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 .budget-value.over { color: var(--warn); }
 .panel.muted { box-shadow: none; background: color-mix(in srgb, var(--card) 55%, var(--bg)); }
@@ -510,38 +518,42 @@ a { color: var(--brand); }
 .food-segments {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  margin: 0 0 4px;
-  padding: 4px;
+  gap: 3px;
+  margin: 0 0 6px;
+  padding: 3px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--card) 70%, var(--bg));
-  border: 1px solid var(--line);
+  background: #e8eef5;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   overflow: hidden;
 }
 .food-seg {
   min-width: 0;
-  min-height: 42px;
-  border-radius: 10px;
+  min-height: 40px;
+  border-radius: 11px;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: #64748b;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   padding: 8px 4px;
-  transition: background 160ms var(--ease), color 160ms var(--ease);
+  transition: background 160ms var(--ease), color 160ms var(--ease), box-shadow 160ms var(--ease);
 }
 .food-seg.on {
-  background: var(--brand);
-  color: var(--brand-ink);
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
-.quick-add textarea {
+.quick-add textarea,
+.chat-form textarea,
+textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 12px;
-  resize: vertical;
+  resize: none;
   background: #fff;
+  max-width: 100%;
 }
 .quick-actions, .row-actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
 .row-actions.wrap, .quick-actions { flex-wrap: wrap; }
@@ -559,7 +571,7 @@ a { color: var(--brand); }
   font-weight: 700;
   transition: transform 140ms var(--ease), background 140ms var(--ease), border-color 140ms var(--ease);
 }
-.primary:active, .secondary:active, .ghost:active, .food-seg:active, .tabbar button:active {
+.primary:active, .secondary:active, .ghost:active, .food-seg:active {
   transform: scale(0.98);
 }
 .primary { background: var(--brand); color: var(--brand-ink); }
@@ -568,13 +580,20 @@ a { color: var(--brand); }
 .ghost { background: transparent; border-color: var(--line); }
 .block { width: 100%; }
 .icon {
-  padding: 6px 10px;
-  background: transparent;
-  border-color: transparent;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   color: var(--muted);
   font-weight: 600;
+  line-height: 1;
+  flex-shrink: 0;
 }
-.icon.danger { color: var(--danger); }
+.icon.danger { color: var(--danger); background: #fff5f5; border-color: #f0d4d4; }
 
 .form-grid {
   display: grid;
@@ -583,7 +602,15 @@ a { color: var(--brand); }
   margin: 10px 0;
 }
 .form-grid.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.form-grid label { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); min-width: 0; }
+.form-grid label {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  min-width: 0;
+}
 .form-grid input, .form-grid select,
 .budget-form input,
 [data-form=household] input,
@@ -593,10 +620,23 @@ a { color: var(--brand); }
 .quick-add textarea {
   width: 100%;
   min-width: 0;
+  min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 10px;
+  padding: 10px 12px;
   background: #fff;
+  box-sizing: border-box;
+}
+.form-grid select,
+.budget-form select,
+.cloud-auth select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
+  background-position: calc(100% - 16px) calc(50% - 2px), calc(100% - 11px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 28px;
 }
 details summary { cursor: pointer; font-weight: 700; }
 
@@ -903,38 +943,68 @@ form.cloud-auth {
   transform: translateX(-50%);
   bottom: 0;
   width: min(840px, 100%);
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--bg) 88%, #fff) 28%, var(--bg) 100%);
+  border: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+.tabbar-inner {
+  pointer-events: auto;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
-  background: color-mix(in srgb, var(--card) 88%, transparent);
-  border-top: 1px solid var(--line);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  z-index: 30;
+  gap: 2px;
+  padding: 6px;
+  border-radius: 22px;
+  background: color-mix(in srgb, #fff 92%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--line) 80%, #fff);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.1), 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
-.tabbar button {
+.tabbar .tab {
+  appearance: none;
   border: 0;
   background: transparent;
-  min-height: 48px;
-  padding: 10px 4px;
-  border-radius: 12px;
-  color: var(--muted);
-  font-weight: 700;
-  font-size: 0.8rem;
+  min-height: 52px;
   min-width: 0;
-  transition: background 160ms var(--ease), color 160ms var(--ease);
+  padding: 6px 4px 5px;
+  border-radius: 16px;
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-weight: 650;
+  transition: background 160ms var(--ease), color 160ms var(--ease), transform 140ms var(--ease);
 }
-.tabbar button.on {
-  background: var(--brand-soft);
+.tabbar .tab .tab-ico {
+  display: block;
+  flex-shrink: 0;
+}
+.tabbar .tab .tab-label {
+  font-size: 0.68rem;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  font-weight: 700;
+}
+.tabbar .tab.on {
+  background: #eef2f6;
   color: var(--ink);
-  box-shadow: inset 0 -2px 0 var(--ink);
+  box-shadow: inset 0 0 0 1px #d7dee8;
+}
+.tabbar .tab.on .tab-ico {
+  color: var(--ink);
+}
+.tabbar .tab:active {
+  transform: scale(0.97);
 }
 
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(78px + env(safe-area-inset-bottom));
+  bottom: calc(88px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   background: var(--ink);
   color: #fff;
@@ -965,7 +1035,7 @@ form.cloud-auth {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shell, .toast, .primary, .secondary, .ghost, .food-seg, .tabbar button {
+  .shell, .toast, .primary, .secondary, .ghost, .food-seg, .tabbar .tab {
     animation: none;
     transition: none;
   }
