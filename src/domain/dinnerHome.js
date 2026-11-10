@@ -106,69 +106,73 @@ export function listDinnerCandidates(state) {
 
   const candidates = [];
 
+  const dinnerPatterns = patterns.filter((p) => p.method === 'steam' || p.method === 'roast');
+  const usePatterns = dinnerPatterns.length
+    ? dinnerPatterns
+    : patterns[0]
+      ? [patterns[0]]
+      : [null];
+
   for (const item of proteins) {
     if (item.status === 'unknown') continue;
 
-    const pattern =
-      patterns.find((p) => p.method === 'roast') ||
-      patterns.find((p) => p.method === 'steam') ||
-      patterns[0] ||
-      null;
-    const sauce =
-      (pattern && sauces.find((s) => (s.forPatterns || []).includes(pattern.name))) ||
-      sauces[0] ||
-      null;
+    for (const pattern of usePatterns) {
+      const saucePool = pattern
+        ? sauces.filter((s) => (s.forPatterns || []).includes(pattern.name))
+        : [];
+      const sauce = pickPreferredSauce(saucePool, item.name) || (!saucePool.length ? sauces[0] : null) || null;
 
-    const reasons = [];
-    const unknowns = [];
-    if (item.status === 'enough') reasons.push(`재고: ${item.name} 충분`);
-    if (item.status === 'low') reasons.push(`재고: ${item.name} 부족(확인됨)`);
-    if (item.status === 'out') reasons.push(`재고: ${item.name} 없음(확인됨)`);
+      const reasons = [];
+      const unknowns = [];
+      if (item.status === 'enough') reasons.push(`재고: ${item.name} 충분`);
+      if (item.status === 'low') reasons.push(`재고: ${item.name} 부족(확인됨)`);
+      if (item.status === 'out') reasons.push(`재고: ${item.name} 없음(확인됨)`);
 
-    const effort = pattern?.effort === 'low' ? '낮음' : pattern?.effort === 'medium' ? '보통' : null;
-    if (effort) reasons.push(`조리 부담: ${effort}(${pattern.name})`);
+      const effort = pattern?.effort === 'low' ? '낮음' : pattern?.effort === 'medium' ? '보통' : null;
+      if (effort) reasons.push(`조리 부담: ${effort}(${pattern.name})`);
 
-    if (recentProteins.has(normalize(item.name))) {
-      reasons.push('최근 같은 재료를 썼어요 · 다른 후보도 볼 수 있어요');
-    } else if (recentProteins.size) {
-      reasons.push('최근 식단에 이 재료는 안 보임(확인된 범위)');
-    }
+      if (recentProteins.has(normalize(item.name))) {
+        reasons.push('최근 같은 재료를 썼어요 · 다른 후보도 볼 수 있어요');
+      } else if (recentProteins.size) {
+        reasons.push('최근 식단에 이 재료는 안 보임(확인된 범위)');
+      }
 
-    let shopping = null;
-    if (item.status === 'out' || item.status === 'low') {
-      shopping = {
-        name: item.name,
-        quantity: 1,
-        unit: guessUnit(item.name),
+      let shopping = null;
+      if (item.status === 'out' || item.status === 'low') {
+        shopping = {
+          name: item.name,
+          quantity: 1,
+          unit: guessUnit(item.name),
+          inventoryId: item.id,
+        };
+        reasons.push(
+          item.status === 'out'
+            ? `장보기 제안: ${item.name} (재고 없음)`
+            : `장보기 제안: ${item.name} (재고 부족)`,
+        );
+      }
+
+      // Sauce components are not inventory-tracked — do not invent gaps.
+      if (sauce) {
+        unknowns.push(`소스(${sauce.name}) 재료 재고는 확인하지 않음`);
+      }
+
+      const title = pattern ? `${pattern.name} · ${item.name}` : item.name;
+      candidates.push({
+        key: `${item.id}-${pattern?.id || 'none'}-${sauce?.id || 'none'}`,
+        title,
+        protein: item.name,
         inventoryId: item.id,
-      };
-      reasons.push(
-        item.status === 'out'
-          ? `장보기 제안: ${item.name} (재고 없음)`
-          : `장보기 제안: ${item.name} (재고 부족)`,
-      );
+        patternId: pattern?.id || null,
+        patternName: pattern?.name || '',
+        sauceId: sauce?.id || null,
+        sauceName: sauce?.name || '',
+        reasons,
+        unknowns,
+        shopping,
+        stockStatus: item.status,
+      });
     }
-
-    // Sauce components are not inventory-tracked — do not invent gaps.
-    if (sauce) {
-      unknowns.push(`소스(${sauce.name}) 재료 재고는 확인하지 않음`);
-    }
-
-    const title = pattern ? `${pattern.name} · ${item.name}` : item.name;
-    candidates.push({
-      key: `${item.id}-${pattern?.id || 'none'}-${sauce?.id || 'none'}`,
-      title,
-      protein: item.name,
-      inventoryId: item.id,
-      patternId: pattern?.id || null,
-      patternName: pattern?.name || '',
-      sauceId: sauce?.id || null,
-      sauceName: sauce?.name || '',
-      reasons,
-      unknowns,
-      shopping,
-      stockStatus: item.status,
-    });
   }
 
   // Prefer in-stock first, then not-recent
@@ -215,4 +219,16 @@ function guessUnit(name) {
   if (/계란|달걀/.test(name)) return '개';
   if (/두부/.test(name)) return '모';
   return '개';
+}
+
+/** Prefer household default sauces from seed (닭 양념 / 마늘간장 등). */
+function pickPreferredSauce(pool, protein) {
+  if (!pool?.length) return null;
+  if (/닭/.test(protein || '')) {
+    const chicken = pool.find((s) => /닭/.test(s.name));
+    if (chicken) return chicken;
+  }
+  const garlic = pool.find((s) => /마늘간장/.test(s.name));
+  if (garlic) return garlic;
+  return pool[0];
 }

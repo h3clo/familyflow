@@ -58,7 +58,20 @@ test('바꾸기 cycles to another candidate', () => {
   const b = buildDinnerHomeOffer(state, { altIndex: a.offer.nextAltIndex });
   assert.equal(a.status, 'offer');
   assert.equal(b.status, 'offer');
-  assert.notEqual(a.offer.protein, b.offer.protein);
+  assert.notEqual(a.offer.key, b.offer.key);
+});
+
+test('prefers household default sauces for roast chicken', () => {
+  const state = baseState([{ id: 'i1', name: '닭고기', status: 'enough' }]);
+  state.sauces = [
+    { id: 's1', name: '토마토소스', forPatterns: ['야채구이'] },
+    { id: 's2', name: '닭 양념 (마늘간장설탕)', forPatterns: ['야채구이'] },
+    { id: 's3', name: '마늘간장 소스', forPatterns: ['야채찜'] },
+  ];
+  const roast = listDinnerCandidates(state).find((c) => c.patternName === '야채구이');
+  assert.equal(roast.sauceName, '닭 양념 (마늘간장설탕)');
+  const steam = listDinnerCandidates(state).find((c) => c.patternName === '야채찜');
+  assert.equal(steam.sauceName, '마늘간장 소스');
 });
 
 test('out-of-stock protein includes shopping.add in proposal', () => {

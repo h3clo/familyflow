@@ -32,6 +32,7 @@ import {
 import { ProposalError } from './domain/proposals.js';
 import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
 import { buildDinnerHomeOffer } from './domain/dinnerHome.js';
+import { resolveDinnerVisual } from './domain/dinnerVisual.js';
 import { nextFoodAction, normalizeFoodNav } from './domain/foodHub.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
 import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
@@ -320,9 +321,23 @@ export function createApp(root) {
         model: aiUi.routeModel,
       }),
     )}</span>`;
+    const dinnerPeek =
+      !authGate && view === 'home'
+        ? buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex })
+        : null;
+    const dinnerVisualPeek =
+      dinnerPeek?.status === 'offer'
+        ? resolveDinnerVisual(state, dinnerPeek.offer)
+        : dinnerPeek?.status === 'confirmed'
+          ? resolveDinnerVisual(state, dinnerPeek.dinner)
+          : null;
+    const immersiveHome = Boolean(dinnerVisualPeek?.imageSrc);
     root.innerHTML = `
-      <div class="shell">
-        <header class="top">
+      <div class="shell ${immersiveHome ? 'shell-immersive' : ''}">
+        ${
+          immersiveHome
+            ? ''
+            : `<header class="top">
           <div>
             <p class="eyebrow">Family Flow</p>
             <h1>${authGate ? '우리 집 시작하기' : viewTitle(view)}</h1>
@@ -331,14 +346,15 @@ export function createApp(root) {
             <p class="household">${esc(state.household.name)}</p>
             <div class="badge-row">${badge}${aiBadge}</div>
           </div>
-        </header>
+        </header>`
+        }
         <main class="main">
           ${pendingApproval ? approvalPanel(pendingApproval) : ''}
           ${
             authGate
               ? authGateView()
               : view === 'home'
-                ? homeView()
+                ? homeView({ badge, aiBadge, immersive: immersiveHome })
                 : view === 'food'
                   ? foodView()
                   : view === 'family'
@@ -436,7 +452,7 @@ export function createApp(root) {
         <ul class="chip-list">${(state.members || [])
           .map(
             (m) =>
-              `<li class="member-chip">${esc(m.displayName)} · ${esc(m.roleLabel || m.role || '구성원')} <button type="button" class="ghost" data-act="remove-member" data-id="${esc(m.id)}" aria-label="삭제">×</button></li>`,
+              `<li class="member-chip"><span class="member-chip-text">${esc(m.displayName)} · ${esc(m.roleLabel || m.role || '구성원')}</span><button type="button" class="ghost member-chip-x" data-act="remove-member" data-id="${esc(m.id)}" aria-label="삭제">×</button></li>`,
           )
           .join('')}</ul>
         <form data-form="add-member" class="cloud-auth">
@@ -459,16 +475,20 @@ export function createApp(root) {
       </section>`;
   }
 
-  function homeView() {
+  function homeView({ badge = '', aiBadge = '', immersive = false } = {}) {
     const pack = generateSuggestions(state);
     const list = ensureActiveList(state);
     const openCount = list.items.filter((i) => !i.checked).length;
     const lowCount = state.inventory.filter((i) => i.status === 'out' || i.status === 'low').length;
     const dinnerHome = buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex });
+    const dinnerBlock = dinnerHomeBlock(dinnerHome, { badge, aiBadge, immersive });
 
     if (pack.mode === 'setup') {
       return `
-        <section class="hero-assist">
+        ${
+          immersive
+            ? dinnerBlock
+            : `<section class="hero-assist">
           <p class="lede">목록을 채우기 전에, 필요한 일을 먼저 보여 드릴게요.</p>
           <h2>${esc(pack.setup.title)}</h2>
           <p class="hint">임의의 재고·구매 이력을 만들지 않아요. 아는 것만 짧게 등록해 주세요.</p>
@@ -476,23 +496,35 @@ export function createApp(root) {
             ${pack.setup.steps
               .map(
                 (s) => `<li>
-                <button type="button" class="primary block" data-nav="${s.view}" ${s.segment ? `data-segment="${s.segment}"` : ''}>${esc(s.label)}</button>
+                <button type="button" class="setup-go" data-nav="${s.view}" ${s.segment ? `data-segment="${s.segment}"` : ''}>
+                  <span>${esc(s.label)}</span><span aria-hidden="true">→</span>
+                </button>
                 <small>${esc(s.hint)}</small>
               </li>`,
               )
               .join('')}
           </ul>
         </section>
-        ${dinnerHomeBlock(dinnerHome)}
-        ${chatPanel()}`;
+        ${dinnerBlock}`
+        }
+        ${
+          immersive
+            ? `<section class="status-strip" aria-label="요약">
+          <div><p class="label">살 것</p><p class="budget-value">${openCount}</p></div>
+          <div><p class="label">재고 주의</p><p class="budget-value">${lowCount}</p></div>
+          <div><p class="label">저녁</p><p class="budget-value">${dinnerHome.status === 'confirmed' ? '확정' : dinnerHome.status === 'offer' ? '제안' : '미정'}</p></div>
+        </section>
+        ${chatPanel()}`
+            : chatPanel()
+        }`;
     }
 
     return `
-      ${dinnerHomeBlock(dinnerHome)}
+      ${dinnerBlock}
       <section class="status-strip" aria-label="요약">
         <div><p class="label">살 것</p><p class="budget-value">${openCount}</p></div>
         <div><p class="label">재고 주의</p><p class="budget-value">${lowCount}</p></div>
-        <div><p class="label">오늘 저녁</p><p class="budget-value">${dinnerHome.status === 'confirmed' ? '확정' : dinnerHome.status === 'offer' ? '제안' : '미정'}</p></div>
+        <div><p class="label">저녁</p><p class="budget-value">${dinnerHome.status === 'confirmed' ? '확정' : dinnerHome.status === 'offer' ? '제안' : '미정'}</p></div>
       </section>
       <section class="panel">
         <h2>지금 챙길 일</h2>
@@ -514,15 +546,32 @@ export function createApp(root) {
       </section>`;
   }
 
-  function dinnerHomeBlock(dinnerHome) {
+  function dinnerHomeBlock(dinnerHome, { badge = '', aiBadge = '', immersive = false } = {}) {
     if (dinnerHome.status === 'confirmed') {
       const dinner = dinnerHome.dinner;
+      const visual = resolveDinnerVisual(state, dinner);
+      if (immersive && visual.imageSrc) {
+        return dinnerStage({
+          visual,
+          badgeLabel: '확정',
+          kicker: '오늘 저녁',
+          title: dinner.title,
+          support: dinner.protein ? dinner.protein : '재료 확인됨',
+          reasons: [],
+          unknowns: [],
+          actions: '',
+          badge,
+          aiBadge,
+        });
+      }
       return `<section class="panel dinner-hero" aria-label="오늘 저녁">
-        <p class="label">오늘 저녁 · 확정</p>
-        <h2>${esc(dinner.title)}</h2>
-        <p class="hint">${dinner.protein ? esc(dinner.protein) + ' · ' : ''}${
-          dinner.sauceName ? '소스 ' + esc(dinner.sauceName) : '소스 자유'
-        }</p>
+        <div class="dinner-hero-body">
+          <p class="label">오늘 저녁 · 확정</p>
+          <h2>${esc(dinner.title)}</h2>
+          <p class="hint">${dinner.protein ? esc(dinner.protein) : '재료 확인됨'}${
+            dinner.sauceName ? '' : ' · 소스 자유'
+          }</p>
+        </div>
       </section>`;
     }
 
@@ -531,29 +580,82 @@ export function createApp(root) {
         <p class="label">오늘 저녁 추천</p>
         <h2>추천할 저녁이 부족해요</h2>
         <p class="hint">${esc(dinnerHome.emptyReason)}</p>
-        <div class="suggest-actions">
-          <button type="button" class="secondary" data-nav="food" data-segment="inventory">재고 확인하기</button>
+        <div class="dinner-empty-actions">
+          <button type="button" class="secondary block" data-nav="food" data-segment="inventory">재고 확인하기</button>
         </div>
       </section>`;
     }
 
     const offer = dinnerHome.offer;
+    const visual = resolveDinnerVisual(state, offer);
+    const actions = `<div class="dinner-actions">
+      <button type="button" class="primary block" data-act="dinner-accept">이대로</button>
+      <button type="button" class="dinner-swap" data-act="dinner-swap" ${offer.hasAlt ? '' : 'disabled'}>다른 후보로 바꾸기</button>
+      <p class="fine">승인 후에만 저장돼요</p>
+    </div>`;
+
+    if (immersive && visual.imageSrc) {
+      return dinnerStage({
+        visual,
+        badgeLabel: '저장 전',
+          kicker: '오늘 저녁\n이걸로 할까요',
+        title: offer.title,
+        support: '확인된 재고만 근거로 골랐어요.',
+        reasons: offer.reasons,
+        unknowns: offer.unknowns || [],
+        actions,
+        badge,
+        aiBadge,
+      });
+    }
+
     return `<section class="panel dinner-hero" aria-label="오늘 저녁 추천">
-      <p class="label">오늘 저녁 추천 · 저장 전</p>
-      <h2>${esc(offer.title)}</h2>
-      <ul class="dinner-reasons">
-        ${offer.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}
-      </ul>
-      ${
-        offer.unknowns?.length
-          ? `<p class="hint">${offer.unknowns.map((u) => esc(u)).join(' · ')}</p>`
-          : ''
-      }
-      <div class="suggest-actions dinner-actions">
-        <button type="button" class="primary" data-act="dinner-accept">이대로</button>
-        <button type="button" class="secondary" data-act="dinner-swap" ${offer.hasAlt ? '' : 'disabled'}>바꾸기</button>
+      <div class="dinner-hero-body">
+        <p class="label">오늘 저녁 추천 · 저장 전</p>
+        <h2>${esc(offer.title)}</h2>
+        <p class="hint">확인된 재고만 근거로 골랐어요.</p>
+        <ul class="dinner-reasons">
+          ${offer.reasons.map((r, i) => `<li><i aria-hidden="true">${i + 1}</i><span>${esc(r)}</span></li>`).join('')}
+        </ul>
+        ${
+          offer.unknowns?.length
+            ? `<p class="hint">${offer.unknowns.map((u) => esc(u)).join(' · ')}</p>`
+            : ''
+        }
+        ${actions}
       </div>
-      <p class="hint">이대로는 미리보기로 열리고, 승인한 뒤에만 저장돼요.</p>
+    </section>`;
+  }
+
+  function dinnerStage({ visual, badgeLabel, kicker, title, support, reasons, unknowns, actions, badge, aiBadge }) {
+    return `<section class="dinner-stage" aria-label="오늘 저녁">
+      <div class="dinner-media" style="background-image:url('${esc(visual.imageSrc)}')" role="img" aria-label="${esc(
+        visual.patternName || '저녁 패턴',
+      )}">
+        <div class="dinner-media-top">
+          <p class="dinner-brand">Family Flow</p>
+          <div class="dinner-media-meta">
+            <p class="dinner-house">${esc(state.household.name)}</p>
+            <div class="badge-row badge-row-on-media">${badge}${aiBadge}</div>
+          </div>
+        </div>
+        <h1 class="dinner-kicker">${esc(kicker)}</h1>
+        <span class="dinner-media-badge">${esc(badgeLabel)}</span>
+        ${visual.sauceLabel ? `<span class="dinner-sauce">${esc(visual.sauceLabel)}</span>` : ''}
+      </div>
+      <div class="dinner-hero-body">
+        <p class="label">오늘 저녁 추천</p>
+        <h2>${esc(title)}</h2>
+        ${support ? `<p class="hint">${esc(support)}</p>` : ''}
+        ${
+          reasons?.length
+            ? `<ul class="dinner-reasons">${reasons
+                .map((r, i) => `<li><i aria-hidden="true">${i + 1}</i><span>${esc(r)}</span></li>`)
+                .join('')}</ul>`
+            : ''
+        }
+        ${actions || ''}
+      </div>
     </section>`;
   }
 
