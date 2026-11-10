@@ -260,27 +260,24 @@ html {
   border-color: var(--line);
 }
 .dinner-hero-body {
-  margin: -28px 16px 0;
   position: relative;
   z-index: 2;
-  padding: 16px 14px 14px;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
-}
-.dinner-hero.dinner-empty .dinner-hero-body,
-.dinner-hero .dinner-hero-body {
   margin: 0;
-  box-shadow: none;
-  border: 0;
   padding: 0;
+  background: transparent;
+  border: 0;
   border-radius: 0;
+  box-shadow: none;
+}
+/* Immersive stage: never pull the body over media badges (was -28px overlap). */
+.dinner-stage > .dinner-hero-body {
+  padding: 14px 16px 0;
 }
 .dinner-media {
   position: relative;
-  height: clamp(260px, 48vw, 320px);
+  height: clamp(280px, 52vw, 340px);
   background: #111 center/cover no-repeat;
+  overflow: hidden;
 }
 .dinner-media::after {
   content: '';
@@ -337,7 +334,7 @@ html {
   position: absolute;
   left: 18px;
   right: 18px;
-  bottom: 72px;
+  bottom: 64px;
   z-index: 2;
   margin: 0;
   color: #fff;
@@ -345,8 +342,8 @@ html {
   font-size: clamp(1.65rem, 6vw, 1.95rem);
   font-weight: 800;
   letter-spacing: -0.045em;
-  line-height: 1.18;
-  max-width: 11ch;
+  line-height: 1.28;
+  max-width: 12ch;
   text-shadow: 0 10px 28px rgba(15, 23, 42, 0.45);
   white-space: pre-line;
 }
@@ -354,11 +351,11 @@ html {
 .dinner-sauce {
   position: absolute;
   left: 18px;
-  bottom: 20px;
-  z-index: 2;
+  bottom: 14px;
+  z-index: 3;
   font-size: 0.7rem;
   font-weight: 700;
-  padding: 5px 8px;
+  padding: 6px 9px;
   border-radius: 8px;
   color: #fff;
   background: rgba(15, 23, 42, 0.78);
@@ -367,6 +364,7 @@ html {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.25;
 }
 .dinner-sauce {
   right: 18px;
@@ -378,16 +376,21 @@ html {
   color: #64748b;
   font-size: 0.72rem;
   font-weight: 700;
+  margin: 0;
 }
 .dinner-hero-body h2,
 .dinner-stage .dinner-hero-body h2 {
-  margin: 7px 0 0;
+  margin: 8px 0 0;
   font-family: var(--display);
   font-size: clamp(1.35rem, 4.4vw, 1.55rem);
   font-weight: 800;
   letter-spacing: -0.035em;
-  line-height: 1.2;
+  line-height: 1.28;
   color: #0f172a;
+}
+.dinner-hero-body > .hint,
+.dinner-hero-body > .dinner-stock-chip {
+  margin-top: 10px;
 }
 .dinner-stock-chip {
   display: inline-flex;
@@ -776,7 +779,20 @@ details summary { cursor: pointer; font-weight: 700; }
   padding: 12px;
   box-shadow: var(--shadow);
 }
-.status-strip > div { min-width: 0; }
+.status-strip > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+.status-strip .label { margin: 0; }
+.status-strip strong,
+.status-strip .budget-value {
+  display: block;
+  margin: 0;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
 .hero-assist {
   background: var(--card);
   border: 1px solid var(--line);
@@ -861,6 +877,12 @@ details summary { cursor: pointer; font-weight: 700; }
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 0.92rem;
+  line-height: 1.45;
+}
+.suggest-card small.hint {
+  display: block;
+  margin-top: 10px;
+  line-height: 1.35;
 }
 .suggest-actions {
   display: grid;
@@ -1005,28 +1027,36 @@ form.cloud-auth {
   appearance: none;
   border: 0;
   background: transparent;
-  min-height: 52px;
+  min-height: 56px;
   min-width: 0;
-  padding: 6px 4px 5px;
+  padding: 7px 4px 6px;
   border-radius: 999px;
   color: #64748b;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 4px;
   font-weight: 650;
+  line-height: 1.2;
+  overflow: visible;
   transition: background 160ms var(--ease), color 160ms var(--ease), transform 140ms var(--ease);
 }
 .tabbar .tab .tab-ico {
   display: block;
   flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  overflow: visible;
 }
 .tabbar .tab .tab-label {
+  display: block;
+  position: static;
   font-size: 0.68rem;
   letter-spacing: -0.01em;
-  line-height: 1.1;
+  line-height: 1.2;
   font-weight: 700;
+  white-space: nowrap;
 }
 .tabbar .tab.on {
   background: #eef2f6;

@@ -752,6 +752,16 @@ export function createApp(root) {
       </section>`;
   }
 
+  /** Avoid stacking the same protein under a title that already names it. */
+  function dinnerSupportLine(dinner) {
+    const title = String(dinner?.title || '');
+    const protein = String(dinner?.protein || '').trim();
+    const sauce = String(dinner?.sauceName || '').trim();
+    if (sauce) return `소스 · ${sauce}`;
+    const base = protein && !title.includes(protein) ? protein : '재료 확인됨';
+    return `${base} · 소스 자유`;
+  }
+
   function dinnerHomeBlock(dinnerHome, { immersive = false } = {}) {
     if (dinnerHome.status === 'confirmed') {
       const dinner = dinnerHome.dinner;
@@ -762,7 +772,7 @@ export function createApp(root) {
           badgeLabel: '확정',
           kicker: '오늘 저녁',
           title: dinner.title,
-          support: dinner.protein ? dinner.protein : '재료 확인됨',
+          support: dinnerSupportLine(dinner),
           actions: '',
         });
       }
@@ -770,9 +780,7 @@ export function createApp(root) {
         <div class="dinner-hero-body">
           <p class="label">오늘 저녁 · 확정</p>
           <h2>${esc(dinner.title)}</h2>
-          <p class="hint">${dinner.protein ? esc(dinner.protein) : '재료 확인됨'}${
-            dinner.sauceName ? '' : ' · 소스 자유'
-          }</p>
+          <p class="hint">${esc(dinnerSupportLine(dinner))}</p>
         </div>
       </section>`;
     }
