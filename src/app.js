@@ -487,16 +487,6 @@ export function createApp(root) {
       user: cloudUi.user,
       deferAuth: cloudUi.deferAuth,
     });
-    const syncUi = syncRuntime.getUi();
-    const badge = isCloudPrimary()
-      ? `<span class="sync-badge sync-${esc(syncUi.status)}" title="${esc(syncUi.message)}">${esc(syncBadgeLabel(syncUi))}</span>`
-      : `<span class="sync-badge sync-idle">로컬</span>`;
-    const aiBadge = `<span class="sync-badge sync-ai" title="${esc(aiUi.message)}">${esc(
-      formatRouteBadge({
-        provider: aiUi.routeProvider,
-        model: aiUi.routeModel,
-      }),
-    )}</span>`;
     const dinnerPeek =
       !authGate && view === 'home'
         ? buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex })
@@ -520,7 +510,7 @@ export function createApp(root) {
           </div>
           <div class="top-meta">
             <p class="household">${esc(state.household.name)}</p>
-            <div class="badge-row">${badge}${aiBadge}</div>
+            ${authGate ? '' : settingsBtn()}
           </div>
         </header>`
         }
@@ -530,7 +520,7 @@ export function createApp(root) {
             authGate
               ? authGateView()
               : view === 'home'
-                ? homeView({ badge, aiBadge, immersive: immersiveHome })
+                ? homeView({ immersive: immersiveHome })
                 : view === 'food'
                   ? foodView()
                   : view === 'family'
@@ -547,12 +537,22 @@ export function createApp(root) {
             ${tab('home', '홈', 'home')}
             ${tab('food', '식생활', 'food')}
             ${tab('family', '가족', 'family')}
-            ${tab('more', '더보기', 'more')}
           </div>
         </nav>`
         }
       </div>`;
     bind();
+  }
+
+  function settingsBtn(opts = {}) {
+    const onMedia = !!opts.onMedia;
+    const on = state.settings.view === 'more';
+    return `<button type="button" class="settings-btn ${on ? 'on' : ''} ${onMedia ? 'on-media' : ''}" data-nav="more" aria-label="설정" title="설정">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 3.5v2.2M12 18.3v2.2M4.9 6.4l1.6 1.6M17.5 16l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.9 17.6l1.6-1.6M17.5 8l1.6-1.6"/>
+      </svg>
+    </button>`;
   }
 
   function tabIcon(kind) {
@@ -582,7 +582,7 @@ export function createApp(root) {
         <p class="hint">${
           localBusy
             ? '새로고침 후에도 로컬 기록은 남아 있어요. 클라우드로 옮기려면 로그인하세요.'
-            : '더보기로 찾아가지 않아도 됩니다. 계정 하나만 만들면 Mac·iPhone·iPad에서 같은 집을 씁니다.'
+            : '계정 하나만 만들면 Mac·iPhone·iPad에서 같은 집을 씁니다.'
         }</p>
       </section>
       ${cloudPanel()}
@@ -590,7 +590,7 @@ export function createApp(root) {
         <button type="button" class="primary block" data-act="defer-cloud-auth">${
           localBusy ? '이 기기 기록으로 계속' : '잠깐 둘러보기 (이 기기만 · 동기화 안 됨)'
         }</button>
-        <p class="hint">나중에 더보기 → 우리 집 클라우드에서 언제든 로그인할 수 있어요.</p>
+        <p class="hint">나중에 우측 위 설정에서 언제든 로그인할 수 있어요.</p>
       </section>`;
   }
 
@@ -611,7 +611,7 @@ export function createApp(root) {
       home: '오늘 챙길 일',
       food: '식생활',
       family: '가족',
-      more: '더보기',
+      more: '설정',
       shopping: '식생활 · 장보기',
       inventory: '식생활 · 재고',
       meals: '식생활 · 식단',
@@ -681,13 +681,13 @@ export function createApp(root) {
       </section>`;
   }
 
-  function homeView({ badge = '', aiBadge = '', immersive = false } = {}) {
+  function homeView({ immersive = false } = {}) {
     const pack = generateSuggestions(state);
     const list = ensureActiveList(state);
     const openCount = list.items.filter((i) => !i.checked).length;
     const lowCount = state.inventory.filter((i) => i.status === 'out' || i.status === 'low').length;
     const dinnerHome = buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex });
-    const dinnerBlock = dinnerHomeBlock(dinnerHome, { badge, aiBadge, immersive });
+    const dinnerBlock = dinnerHomeBlock(dinnerHome, { immersive });
 
     if (pack.mode === 'setup') {
       return `
@@ -752,7 +752,7 @@ export function createApp(root) {
       </section>`;
   }
 
-  function dinnerHomeBlock(dinnerHome, { badge = '', aiBadge = '', immersive = false } = {}) {
+  function dinnerHomeBlock(dinnerHome, { immersive = false } = {}) {
     if (dinnerHome.status === 'confirmed') {
       const dinner = dinnerHome.dinner;
       const visual = resolveDinnerVisual(state, dinner);
@@ -763,11 +763,7 @@ export function createApp(root) {
           kicker: '오늘 저녁',
           title: dinner.title,
           support: dinner.protein ? dinner.protein : '재료 확인됨',
-          reasons: [],
-          unknowns: [],
           actions: '',
-          badge,
-          aiBadge,
         });
       }
       return `<section class="panel dinner-hero" aria-label="오늘 저녁">
@@ -824,8 +820,6 @@ export function createApp(root) {
         stockChip,
         reasonHtml: reasonList,
         actions,
-        badge,
-        aiBadge,
       });
     }
 
@@ -901,7 +895,7 @@ export function createApp(root) {
     </div>`;
   }
 
-  function dinnerStage({ visual, badgeLabel, kicker, title, support, stockChip = '', reasonHtml = '', actions, badge, aiBadge }) {
+  function dinnerStage({ visual, badgeLabel, kicker, title, support, stockChip = '', reasonHtml = '', actions }) {
     return `<section class="dinner-stage" aria-label="오늘 저녁">
       <div class="dinner-media" style="background-image:url('${esc(visual.imageSrc)}')" role="img" aria-label="${esc(
         visual.patternName || '저녁 패턴',
@@ -910,7 +904,7 @@ export function createApp(root) {
           <p class="dinner-brand">Family Flow</p>
           <div class="dinner-media-meta">
             <p class="dinner-house">${esc(state.household.name)}</p>
-            <div class="badge-row badge-row-on-media">${badge}${aiBadge}</div>
+            ${settingsBtn({ onMedia: true })}
           </div>
         </div>
         <h1 class="dinner-kicker">${esc(kicker)}</h1>
@@ -1221,6 +1215,9 @@ export function createApp(root) {
     }[aiUi.status] || aiUi.status;
 
     return `
+      <section class="panel muted">
+        <p class="hint">동기화·AI 상태는 홈에 안 붙이고, 필요할 때만 여기서 확인해요.</p>
+      </section>
       <section class="panel">
         <h2>우리 집</h2>
         <p class="hint">가족 이름표는 <strong>가족</strong> 탭에 두었어요. 여기는 집 설정·클라우드·AI만.</p>
