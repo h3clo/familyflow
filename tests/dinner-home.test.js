@@ -76,18 +76,18 @@ test('offers dinner from enough protein with 이대로 proposal', () => {
   assert.equal(state.todayDinner, null);
 });
 
-test('formatDinnerOfferTitle puts sauce in title, not protein', () => {
+test('formatDinnerOfferTitle is pattern only (sauce/protein live in chips)', () => {
   assert.equal(
     formatDinnerOfferTitle({
       patternName: '야채구이',
       sauceName: '간장마늘 양념',
       protein: '고등어',
     }),
-    '야채구이 · 간장마늘',
+    '야채구이',
   );
   assert.equal(
     formatDinnerOfferTitle({ patternName: '야채찜', sauceName: '부추장', protein: '닭고기' }),
-    '야채찜 · 부추장',
+    '야채찜',
   );
 });
 

@@ -18,13 +18,11 @@ export const STARTER_PROTEINS = ['닭고기', '고등어', '돼지고기', '두�
 export const UNTRACKED_STOCK_LABEL = '재고 미확인 · 가정 제안';
 
 /**
- * Hero title matches prebaked pattern×sauce photos.
- * Protein is a pairing suggestion — show separately as 곁들임, not in the title.
+ * Hero title is the cooking pattern only.
+ * Sauce + protein show as chips under the title (소스 · … / 곁들임 · …).
  */
-export function formatDinnerOfferTitle({ patternName, sauceName, protein } = {}) {
+export function formatDinnerOfferTitle({ patternName, protein } = {}) {
   const pattern = String(patternName || '').trim();
-  const sauce = shortenSauceLabel(sauceName);
-  if (pattern && sauce) return `${pattern} · ${sauce}`;
   if (pattern) return pattern;
   return String(protein || '').trim() || '오늘 저녁';
 }
@@ -290,7 +288,6 @@ export function listDinnerCandidates(state) {
 
         const title = formatDinnerOfferTitle({
           patternName: pattern?.name || '',
-          sauceName: sauce?.name || '',
           protein: source.name,
         });
         const score = scoreDinnerCandidate(
