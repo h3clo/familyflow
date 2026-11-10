@@ -151,26 +151,64 @@ export function buildMigrationPlan(localState, cloudSnapshot) {
     cloudSnapshot?.todayDinner &&
     JSON.stringify(localState.todayDinner) !== JSON.stringify(cloudSnapshot.todayDinner);
 
-  const needsAttention =
+  const localMembers = localState?.members || [];
+  const cloudMembers = cloudSnapshot?.members || [];
+  const family = diffFamilyProfiles(localMembers, cloudMembers);
+
+  const localPatterns = localState?.cookingPatterns || [];
+  const localSauces = localState?.sauces || [];
+  const catalog = {
+    localPatterns: localPatterns.length,
+    localSauces: localSauces.length,
+    // Cloud schema has no pattern/sauce tables yet — catalog stays device-local.
+    cloudPatterns: 0,
+    cloudSauces: 0,
+    note: '조리 패턴·소스는 아직 클라우드 테이블이 없어 이 기기 카탈로그로 유지됩니다.',
+  };
+
+  const divergentRows =
+    shopping.localOnly.length +
+    shopping.cloudOnly.length +
     shopping.conflicts.length +
-      shopping.duplicatesByName.length +
-      inventory.conflicts.length +
-      inventory.duplicatesByName.length +
-      (mealConflict ? 1 : 0) +
-      (dinnerConflict ? 1 : 0) >
-    0;
+    shopping.duplicatesByName.length +
+    inventory.localOnly.length +
+    inventory.cloudOnly.length +
+    inventory.conflicts.length +
+    inventory.duplicatesByName.length +
+    family.localOnly.length +
+    family.cloudOnly.length +
+    family.conflicts.length +
+    (mealConflict ? 1 : 0) +
+    (dinnerConflict ? 1 : 0) +
+    (localState?.mealPlan && !cloudSnapshot?.mealPlan ? 1 : 0) +
+    (!localState?.mealPlan && cloudSnapshot?.mealPlan ? 1 : 0) +
+    (localState?.todayDinner && !cloudSnapshot?.todayDinner ? 1 : 0) +
+    (!localState?.todayDinner && cloudSnapshot?.todayDinner ? 1 : 0);
+
+  const needsAttention = divergentRows > 0;
 
   const cloudEmpty =
     cloudItems.length === 0 &&
     cloudInv.length === 0 &&
     !cloudSnapshot?.mealPlan &&
-    !cloudSnapshot?.todayDinner;
+    !cloudSnapshot?.todayDinner &&
+    cloudMembers.length === 0;
+
+  const localEmpty =
+    localItems.length === 0 &&
+    localInv.length === 0 &&
+    !localState?.mealPlan &&
+    !localState?.todayDinner &&
+    localMembers.length === 0;
 
   return {
     cloudEmpty,
+    localEmpty,
     needsAttention,
     shopping,
     inventory,
+    family,
+    catalog,
     meals: {
       mealPlanConflict: !!mealConflict,
       todayDinnerConflict: !!dinnerConflict,
@@ -188,8 +226,56 @@ export function buildMigrationPlan(localState, cloudSnapshot) {
       inventoryConflicts: inventory.conflicts.length,
       inventoryDuplicates: inventory.duplicatesByName.length,
       inventoryCloudOnly: inventory.cloudOnly.length,
+      familyLocalOnly: family.localOnly.length,
+      familyCloudOnly: family.cloudOnly.length,
+      familyConflicts: family.conflicts.length,
+      localPatterns: catalog.localPatterns,
+      localSauces: catalog.localSauces,
     },
   };
+}
+
+function diffFamilyProfiles(localMembers, cloudMembers) {
+  const local = localMembers || [];
+  const cloud = cloudMembers || [];
+  const cloudById = new Map(cloud.map((m) => [m.id, m]));
+  const family = { sameId: [], conflicts: [], localOnly: [], cloudOnly: [] };
+  const seen = new Set();
+  for (const m of local) {
+    const remote = cloudById.get(m.id);
+    if (remote) {
+      seen.add(remote.id);
+      const localName = String(m.displayName || m.name || '');
+      const remoteName = String(remote.displayName || remote.name || '');
+      const localRole = String(m.roleLabel || m.role || '');
+      const remoteRole = String(remote.roleLabel || remote.role || '');
+      if (localName !== remoteName || localRole !== remoteRole || String(m.note || '') !== String(remote.note || '')) {
+        family.conflicts.push({
+          id: m.id,
+          name: localName,
+          local: { name: localName, role: localRole, note: m.note || '' },
+          cloud: { name: remoteName, role: remoteRole, note: remote.note || '' },
+          resolution: 'local_wins_on_approve',
+        });
+      } else {
+        family.sameId.push({ id: m.id, name: localName });
+      }
+    } else {
+      family.localOnly.push({
+        id: m.id,
+        name: String(m.displayName || m.name || ''),
+      });
+    }
+  }
+  for (const remote of cloud) {
+    if (!seen.has(remote.id) && !local.some((l) => l.id === remote.id)) {
+      family.cloudOnly.push({
+        id: remote.id,
+        name: String(remote.displayName || remote.name || ''),
+      });
+    }
+  }
+  return family;
 }
 
 function summarizeShopping(i) {
@@ -246,12 +332,34 @@ export function formatMigrationPreview(plan) {
   lines.push(
     `재고: 올릴 ${s.inventoryLocalOnly} · 충돌 ${s.inventoryConflicts} · 이름중복 ${s.inventoryDuplicates} · 클라우드만 ${s.inventoryCloudOnly}`,
   );
-  if (plan.meals.mealPlanConflict) lines.push('주간 식단이 기기와 클라우드에서 달라요 → 승인 시 기기 값으로 덮어씁니다.');
-  if (plan.meals.todayDinnerConflict) lines.push('오늘 저녁이 달라요 → 승인 시 기기 값으로 덮어씁니다.');
+  lines.push(
+    `가족 프로필: 올릴 ${s.familyLocalOnly || 0} · 충돌 ${s.familyConflicts || 0} · 클라우드만 ${s.familyCloudOnly || 0}`,
+  );
+  if (plan.meals.localHasMealPlan || plan.meals.cloudHasMealPlan) {
+    lines.push(
+      plan.meals.mealPlanConflict
+        ? '주간 식단이 기기와 클라우드에서 달라요 → 승인 시 기기 값으로 덮어씁니다.'
+        : `주간 식단: 기기 ${plan.meals.localHasMealPlan ? '있음' : '없음'} · 클라우드 ${plan.meals.cloudHasMealPlan ? '있음' : '없음'}`,
+    );
+  }
+  if (plan.meals.localHasDinner || plan.meals.cloudHasDinner) {
+    lines.push(
+      plan.meals.todayDinnerConflict
+        ? '오늘 저녁이 달라요 → 승인 시 기기 값으로 덮어씁니다.'
+        : `오늘 저녁: 기기 ${plan.meals.localHasDinner ? '있음' : '없음'} · 클라우드 ${plan.meals.cloudHasDinner ? '있음' : '없음'}`,
+    );
+  }
+  if (plan.catalog) {
+    lines.push(
+      `조리 패턴·소스(기기 카탈로그): 패턴 ${plan.catalog.localPatterns} · 소스 ${plan.catalog.localSauces} — ${plan.catalog.note}`,
+    );
+  }
   if (plan.needsAttention) {
-    lines.push('충돌·중복이 있어 승인 전에 내용을 확인해 주세요. 승인하면 기기(로컬) 값이 우선합니다. 로컬은 삭제되지 않습니다.');
+    lines.push(
+      '서로 다른 기록이 있어 자동으로 덮어쓰지 않아요. 승인 전에 확인해 주세요. 승인하면 기기(로컬) 값이 우선하고, 로컬 원본은 삭제되지 않습니다.',
+    );
   } else {
-    lines.push('큰 충돌은 없어요. 승인하면 클라우드에 복사하고, 이후 이 계정의 기본 저장소로 씁니다.');
+    lines.push('큰 차이는 없어요. 승인하면 클라우드에 맞추고, 이후 이 계정의 기본 저장소로 씁니다.');
   }
   return lines.join('\n');
 }

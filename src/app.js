@@ -55,14 +55,20 @@ import { getSupabaseClient } from './cloud/client.js';
 import {
   ensureDeviceLocalBackup,
   saveScopedState,
+  loadScopedState,
   isolateOnSignOut,
   bootPrefersScopedCache,
 } from './cloud/sessionScope.js';
 import {
   needsCloudAuthGate,
   parseSignupHouseholdName,
-  chooseCloudBootstrapAction,
 } from './cloud/onboarding.js';
+import {
+  buildSyncableFootprint,
+  chooseCloudBootstrapAction,
+  prepareHouseholdSwitch,
+  bootstrapNetworkFailure,
+} from './cloud/bootstrap.js';
 import { uid } from './lib/id.js';
 
 export function createApp(root) {
@@ -218,9 +224,9 @@ export function createApp(root) {
   }
 
   /**
-   * Bind household so Supabase is the real store (not a buried optional migrate step).
-   * Empty local + populated cloud → pull. Populated local + empty cloud → push.
-   * Both populated → keep preview (avoid wiping either side blindly).
+   * Bind household so Supabase is the real store.
+   * Considers shopping/inventory/meals/dinner/profiles (+ local pattern·sauce catalog).
+   * Divergent both-sides data → preview approval only (no silent overwrite).
    */
   async function activateCloudAsPrimary({ forcePreview = false } = {}) {
     const hid = state.cloud?.householdId;
@@ -237,20 +243,18 @@ export function createApp(root) {
 
     try {
       const snap = await fetchCloudSnapshot(state, hid);
-      const list = ensureActiveList(state);
-      const action = chooseCloudBootstrapAction({
-        localInventory: (state.inventory || []).length,
-        localShopping: (list.items || []).length,
-        cloudInventory: (snap?.inventory || []).length,
-        cloudShopping: (snap?.shoppingLists?.[0]?.items || []).length,
-      });
+      const plan = buildMigrationPlan(state, snap);
+      const localFp = buildSyncableFootprint(state);
+      const cloudFp = buildSyncableFootprint(snap);
+      const action = forcePreview
+        ? 'needs-preview'
+        : chooseCloudBootstrapAction({ local: localFp, cloud: cloudFp, plan });
 
-      if (action === 'needs-preview' || forcePreview) {
-        const plan = buildMigrationPlan(state, snap);
+      if (action === 'needs-preview') {
         cloudUi.migrationPlan = plan;
         cloudUi.migrationText = formatMigrationPreview(plan);
         cloudUi.message =
-          '이 기기와 클라우드에 둘 다 기록이 있어요. 미리보기를 확인한 뒤 클라우드를 기본 저장소로 승인해 주세요.';
+          '이 기기와 클라우드에 서로 다른 기록이 있어요. 미리보기를 확인한 뒤 승인해 주세요. 자동으로 덮어쓰지 않아요.';
         syncRuntime.setStatus(SyncStatus.idle, '이전 확인 필요');
         return { ok: false, action: 'needs-preview' };
       }
@@ -268,13 +272,13 @@ export function createApp(root) {
         cloudUi.message =
           action === 'push'
             ? '이 기기 기록을 클라우드에 올렸고, 이제 클라우드가 기본 저장소예요.'
-            : '클라우드를 기본 저장소로 연결했어요. 재고·장보기를 넣으면 자동으로 동기화돼요.';
+            : '클라우드를 기본 저장소로 연결했어요. 재고·장보기·식단을 넣으면 자동으로 동기화돼요.';
         syncRuntime.setStatus(SyncStatus.ok, '클라우드 연결됨', { syncedAt: now, error: null });
         await startCloudListeners();
         return { ok: true, action };
       }
 
-      // pull: cloud has data, local is empty for shopping/inventory
+      // pull: cloud has syncable data, local transactional footprint empty
       const now = new Date().toISOString();
       state.cloud.mode = 'cloud-primary';
       state.cloud.migratedAt = state.cloud.migratedAt || now;
@@ -287,10 +291,40 @@ export function createApp(root) {
       await startCloudListeners();
       return { ok: true, action: 'pull' };
     } catch (err) {
-      cloudUi.message = err.message || '클라우드 연결에 실패했어요.';
+      const fail = bootstrapNetworkFailure(err);
+      cloudUi.message = fail.message;
+      // Stay local — do not flip mode or wipe device data on network errors.
+      if (state.cloud?.mode !== 'cloud-primary') {
+        state.cloud.mode = 'local';
+        persist(state);
+      }
       syncRuntime.setStatus(SyncStatus.error, cloudUi.message, { error: cloudUi.message });
-      return { ok: false, action: 'error', error: err };
+      return fail;
     }
+  }
+
+  async function switchActiveHousehold(nextHid) {
+    if (!nextHid || !cloudUi.user) return;
+    await syncRuntime.dispose();
+    const switched = prepareHouseholdSwitch({
+      prevState: state,
+      nextHouseholdId: nextHid,
+      userId: cloudUi.user.id,
+      loadScoped: loadScopedState,
+      saveScoped: saveScopedState,
+    });
+    state = switched.state;
+    ensureActiveList(state);
+    persistActive();
+    cloudUi.migrationPlan = null;
+    cloudUi.migrationText = '';
+    cloudUi.members = [];
+    try {
+      cloudUi.members = await listMembers(nextHid);
+    } catch {
+      cloudUi.members = [];
+    }
+    await activateCloudAsPrimary();
   }
 
   async function refreshCloudSession() {
@@ -1762,17 +1796,16 @@ export function createApp(root) {
 
     root.querySelectorAll('[data-act=cloud-select-hh]').forEach((btn) => {
       btn.onclick = async () => {
-        commit((s) => {
-          s.cloud.householdId = btn.dataset.id;
-          if (s.cloud.mode !== 'cloud-primary') s.cloud.mode = 'local';
-        }, '집을 선택했어요. 클라우드에 연결 중…');
-        cloudUi.migrationPlan = null;
-        cloudUi.migrationText = '';
+        const nextHid = btn.dataset.id;
+        if (!nextHid || nextHid === state.cloud?.householdId) return;
         cloudUi.busy = true;
+        cloudUi.message = '다른 집으로 전환 중… 이전 집 데이터와 섞지 않아요.';
         render();
         try {
-          await refreshCloudSession();
-          await activateCloudAsPrimary();
+          await switchActiveHousehold(nextHid);
+          if (!cloudUi.message) setToast('집을 바꿨어요.');
+        } catch (err) {
+          cloudUi.message = err.message || '집 전환에 실패했어요.';
         } finally {
           cloudUi.busy = false;
           render();
