@@ -1,4 +1,5 @@
 import { createProposal } from './proposals.js';
+import { normalizeCategory } from './categories.js';
 
 /** Build ActionProposal for shopping-tab inventory chips. */
 export function proposalFromInventoryChip(suggestion) {
@@ -8,9 +9,7 @@ export function proposalFromInventoryChip(suggestion) {
   const qty = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
   const unit = String(suggestion.unit || '개').trim() || '개';
   const priority = suggestion.priority === 'nice' ? 'nice' : 'must';
-  const category = ['food', 'household', 'other'].includes(suggestion.category)
-    ? suggestion.category
-    : 'other';
+  const category = normalizeCategory(suggestion.category);
   const inventoryId = suggestion.inventoryId || null;
 
   return createProposal({

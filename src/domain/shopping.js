@@ -1,5 +1,6 @@
 import { uid } from '../lib/id.js';
 import { parseQuickAdd } from './quick-add.js';
+import { normalizeCategory } from './categories.js';
 
 export function createShoppingList({ title, budgetWon } = {}) {
   const now = new Date();
@@ -107,9 +108,7 @@ function normalizeItem(partial) {
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
     unit: String(partial.unit || '개').trim() || '개',
     priority: partial.priority === 'nice' ? 'nice' : 'must',
-    category: ['food', 'household', 'other'].includes(partial.category)
-      ? partial.category
-      : 'other',
+    category: normalizeCategory(partial.category),
     estimatedPrice:
       partial.estimatedPrice == null || partial.estimatedPrice === ''
         ? null
@@ -161,6 +160,6 @@ export function inventoryProposalsFromChecked(list, inventory) {
 }
 
 function guessLocation(category) {
-  if (category === 'household') return 'pantry';
+  if (category === 'household' || category === 'snack') return 'pantry';
   return 'fridge';
 }

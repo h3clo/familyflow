@@ -38,6 +38,7 @@ import {
 } from './domain/dinnerHome.js';
 import { resolveDinnerVisual } from './domain/dinnerVisual.js';
 import { nextFoodAction, normalizeFoodNav } from './domain/foodHub.js';
+import { categoryLabel, categoryOptionsHtml } from './domain/categories.js';
 import { pinWindowTop } from './lib/scrollLock.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
 import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
@@ -552,18 +553,10 @@ export function createApp(root) {
   function settingsBtn(opts = {}) {
     const onMedia = !!opts.onMedia;
     const on = state.settings.view === 'more';
-    // Sliders (not sun-ray gear) so it never reads as a theme toggle.
     return `<button type="button" class="settings-btn ${on ? 'on' : ''} ${onMedia ? 'on-media' : ''}" data-nav="more" aria-label="설정" title="설정">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M4 7h10"/>
-        <path d="M18 7h2"/>
-        <circle cx="16" cy="7" r="2.2"/>
-        <path d="M4 17h2"/>
-        <path d="M10 17h10"/>
-        <circle cx="8" cy="17" r="2.2"/>
-        <path d="M4 12h4"/>
-        <path d="M12 12h8"/>
-        <circle cx="10" cy="12" r="2.2"/>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V19a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H5a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H10a1.7 1.7 0 0 0 1-1.5V5a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V10c.5.3 1.1.6 1.5 1H19a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
       </svg>
     </button>`;
   }
@@ -1019,7 +1012,7 @@ export function createApp(root) {
             <label>수량<input name="quantity" type="number" min="0.1" step="any" value="1" /></label>
             <label>단위<input name="unit" maxlength="12" value="개" /></label>
             <label>구분<select name="priority"><option value="must">필수</option><option value="nice">선택</option></select></label>
-            <label>분류<select name="category"><option value="household">생활용품</option><option value="food">식재료</option><option value="other">기타</option></select></label>
+            <label>분류<select name="category">${categoryOptionsHtml('food')}</select></label>
             <label>예상 가격(원)<input name="estimatedPrice" type="number" min="0" step="100" placeholder="선택" /></label>
           </div>
           <button type="submit" class="primary block">추가</button>
@@ -1114,7 +1107,7 @@ export function createApp(root) {
           <label>상태<select name="status">${STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('')}</select></label>
           <label>수량(선택)<input name="quantity" type="number" min="0" step="any" /></label>
           <label>단위<input name="unit" maxlength="12" placeholder="개" /></label>
-          <label>분류<select name="category"><option value="food">식재료</option><option value="household">생활용품</option><option value="other">기타</option></select></label>
+          <label>분류<select name="category">${categoryOptionsHtml('food')}</select></label>
         </div>
         <button type="submit" class="primary block">재고 등록</button>
       </form>
@@ -1145,7 +1138,7 @@ export function createApp(root) {
     const plan = state.mealPlan;
     const dinner = state.todayDinner;
     return `
-      <p class="lede">매일 새 요리 대신 야채찜·구이 + 소스 변형. AI 없이 규칙으로 제안합니다.</p>
+      <p class="lede">지금은 <strong>저녁</strong>만 다뤄요. 야채찜·구이 + 소스 변형. 아침·점심 추천은 나중에.</p>
       ${
         dinner
           ? `<section class="panel dinner-confirmed"><h2>홈에서 확정한 오늘 저녁</h2><p><strong>${esc(dinner.title)}</strong></p><small>${dinner.protein ? esc(dinner.protein) : ''}${dinner.sauceName ? ' · ' + esc(dinner.sauceName) : ''}</small></section>`
@@ -2270,7 +2263,7 @@ function won(n) {
   return `${Number(n).toLocaleString('ko-KR')}원`;
 }
 function catLabel(c) {
-  return { food: '식재료', household: '생활용품', other: '기타' }[c] || '기타';
+  return categoryLabel(c);
 }
 function mealLabel(t) {
   return { breakfast: '아침', lunch: '점심', dinner: '저녁' }[t] || t;
