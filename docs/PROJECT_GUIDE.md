@@ -5,9 +5,9 @@
 
 ## 현재 시작점 (2026-11-11 Asia/Seoul)
 
-**방금 완료:** 크롬 단순화(#17) · SW/캐시 버스팅(배포 직후 HTML·CSS 바로 확인).
+**방금 완료:** SW 캐시 버스팅(#18) · `clear-cache.html` 탈출구(#19) 배포.
 
-**지금 작업:** 캐시 버스팅 PR 병합·Pages에서 새로고침만으로 최신 번들 확인.
+**지금 작업:** _(대기열 P1 중 승인된 항목)_
 
 **다음 행동 (한 가지):** 실계정 동기화 E2E(격리 계정) 또는 sandbox URL 격리 구현 중 승인된 항목.
 
@@ -22,7 +22,7 @@
 | 클라우드 자동 연결 | 배포 | PR #10 |
 | Dinner ranking v2 · 확인 후 재고 등록 | 배포 | PR #11 |
 | UI/비주얼(토큰 미확정) | 배포 | dinner 에셋 |
-| Pages SW 캐시 | 배포 예정 | HTML network-first · `build.json` · 배포마다 CACHE 무효화 |
+| Pages SW 캐시 | 배포 | #18 network-first · #19 `/clear-cache.html` |
 
 ## 검증됨 vs 미검증
 
