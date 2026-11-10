@@ -153,7 +153,7 @@ export function seedState(state) {
       name: '간단 아침',
       method: 'assemble',
       effort: 'low',
-      notes: '구운란, 찐빵 등 저조리',
+      notes: '아침·점심 추천은 아직 안 씀. 저녁(찜·구이)만 다뤄요.',
     },
   ];
 

@@ -91,10 +91,14 @@ function inferPriority(text) {
 }
 
 const HOUSEHOLD = /휴지|화장지|세제|섬유유연제|주방세제|쓰레기봉투|랩|호일|물티슈|샴푸|린스|치약|비누|고무장갑/;
+const SNACK =
+  /과자|쿠키|초콜릿|초코|사탕|젤리|아이스크림|스낵|간식|빵|찐빵|케이크|비스킷|칩|팝콘|견과|에너지바|요거트/;
 const FOOD = /고기|닭|돼지|소고기|야채|채소|브로콜리|양파|마늘|계란|달걀|우유|밥|쌀|김치|두부|라면|소스|간장|기름/;
 
+/** Pick a known category from the item name — prefer this over inventing freeform tags. */
 export function inferCategory(name) {
   if (HOUSEHOLD.test(name)) return 'household';
+  if (SNACK.test(name)) return 'snack';
   if (FOOD.test(name)) return 'food';
   return 'other';
 }

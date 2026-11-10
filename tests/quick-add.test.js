@@ -21,3 +21,9 @@ test('parses simple qty unit', () => {
 test('returns null for empty', () => {
   assert.equal(parseQuickAdd(''), null);
 });
+
+test('infers snack category for 과자', () => {
+  const r = parseQuickAdd('과자 2봉');
+  assert.equal(r.name, '과자');
+  assert.equal(r.category, 'snack');
+});

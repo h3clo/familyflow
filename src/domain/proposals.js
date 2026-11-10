@@ -11,6 +11,7 @@ import { uid } from '../lib/id.js';
 import { ensureActiveList, addShoppingItem, removeShoppingItem } from './shopping.js';
 import { setInventoryStatus, upsertInventory } from './inventory.js';
 import { draftWeek } from './meals.js';
+import { normalizeCategory } from './categories.js';
 
 export const PROPOSAL_SCHEMA_VERSION = 1;
 
@@ -284,9 +285,7 @@ function describeAndApplyOp(draft, { op, payload }) {
     if (!Number.isFinite(qty) || qty <= 0) throw new ProposalError('장보기 수량을 확인해주세요.');
     const unit = String(payload.unit || '개').trim() || '개';
     const priority = payload.priority === 'nice' ? 'nice' : 'must';
-    const category = ['food', 'household', 'other'].includes(payload.category)
-      ? payload.category
-      : 'other';
+    const category = normalizeCategory(payload.category);
 
     if (openShoppingNames(list).has(normalizeName(name))) {
       if (payload.skipIfExists) {

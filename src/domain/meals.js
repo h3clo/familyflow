@@ -1,18 +1,22 @@
 import { uid } from '../lib/id.js';
 
+/** Kept for week schema / future breakfast·lunch recommendations. */
 const MEAL_TYPES = [
   { id: 'breakfast', label: '아침', effortCap: 'low' },
   { id: 'lunch', label: '점심', effortCap: 'low' },
   { id: 'dinner', label: '저녁', effortCap: 'medium' },
 ];
 
-/** Simple rule-based today suggestion — no AI. */
+/**
+ * Rule-based today suggestion — dinner only for now.
+ * Breakfast/lunch stay empty until we add real recommendations later.
+ */
 export function suggestToday(state, { noShop = false, lazy = false, avoidProtein } = {}) {
   const sauces = state.sauces || [];
   const patterns = state.cookingPatterns || [];
   const steam = patterns.find((p) => p.method === 'steam') || patterns[0];
   const roast = patterns.find((p) => p.method === 'roast') || patterns[1];
-  const easy = patterns.find((p) => p.effort === 'low') || patterns[2];
+  const easy = patterns.find((p) => p.effort === 'low' && p.method !== 'assemble') || patterns.find((p) => p.method === 'steam');
 
   const inventoryNames = new Set(
     (state.inventory || [])
@@ -28,50 +32,27 @@ export function suggestToday(state, { noShop = false, lazy = false, avoidProtein
 
   const protein = avoidProtein === '닭' ? '돼지고기' : avoidProtein === '돼지' ? '소고기' : '닭고기';
 
-  const dinnerPattern = lazy ? easy : Math.random() < 0.5 ? steam : roast;
+  const dinnerPattern = lazy ? easy || steam : Math.random() < 0.5 ? steam : roast;
   const dinnerSauce = pickSauce(dinnerPattern?.name, new Date().getDate());
 
-  const slots = [
-    {
-      mealType: 'breakfast',
-      pattern: easy,
-      title: lazy || true ? '구운란 · 찐빵' : easy?.name,
-      protein: null,
-      sauce: null,
-      effort: 'low',
-      note: '조리 최소',
-    },
-    {
-      mealType: 'lunch',
-      pattern: easy,
-      title: '남은 야채 간단 조립',
-      protein: null,
-      sauce: pickSauce('야채찜', 1),
-      effort: 'low',
-      note: '간단',
-    },
-    {
-      mealType: 'dinner',
-      pattern: dinnerPattern,
-      title: dinnerPattern?.name || '저녁',
-      protein: lazy ? null : protein,
-      sauce: dinnerSauce,
-      effort: lazy ? 'low' : 'medium',
-      note: dinnerSauce ? `소스: ${dinnerSauce.name}` : '소스만 바꿔도 OK',
-    },
-  ];
+  const dinner = {
+    mealType: 'dinner',
+    pattern: dinnerPattern,
+    title: dinnerPattern?.name || '저녁',
+    protein: lazy ? null : protein,
+    sauce: dinnerSauce,
+    effort: lazy ? 'low' : 'medium',
+    note: dinnerSauce ? `소스: ${dinnerSauce.name}` : '소스만 바꿔도 OK',
+  };
 
   if (noShop) {
-    for (const slot of slots) {
-      if (inventoryNames.size === 0) {
-        slot.note = `${slot.note} · 재고 비어 있음 — 최소 장보기 필요할 수 있어요`;
-      } else {
-        slot.note = `${slot.note} · 재고 위주`;
-      }
-    }
+    dinner.note =
+      inventoryNames.size === 0
+        ? `${dinner.note} · 재고 비어 있음 — 최소 장보기 필요할 수 있어요`
+        : `${dinner.note} · 재고 위주`;
   }
 
-  return { date: todayKey(), slots, mealTypes: MEAL_TYPES };
+  return { date: todayKey(), slots: [dinner], mealTypes: MEAL_TYPES };
 }
 
 export function emptyWeekPlan(weekStart = mondayKey()) {
@@ -99,12 +80,11 @@ export function emptyWeekPlan(weekStart = mondayKey()) {
   };
 }
 
-/** Draft week: rotate steam/roast + sauces, easy breakfasts. */
+/** Draft week: dinner only. Breakfast/lunch left empty on purpose. */
 export function draftWeek(state) {
   const plan = emptyWeekPlan();
   const steam = state.cookingPatterns.find((p) => p.method === 'steam');
   const roast = state.cookingPatterns.find((p) => p.method === 'roast');
-  const easy = state.cookingPatterns.find((p) => p.effort === 'low');
   const steamSauces = state.sauces.filter((s) => (s.forPatterns || []).includes('야채찜'));
   const roastSauces = state.sauces.filter((s) => (s.forPatterns || []).includes('야채구이'));
   const proteins = ['닭고기', '돼지고기', '소고기', '두부'];
@@ -114,20 +94,14 @@ export function draftWeek(state) {
     const saucePool = dinnerPattern === steam ? steamSauces : roastSauces;
     const sauce = saucePool[i % Math.max(saucePool.length, 1)];
     day.slots = day.slots.map((slot) => {
-      if (slot.mealType === 'breakfast') {
+      if (slot.mealType !== 'dinner') {
         return {
           ...slot,
-          patternId: easy?.id,
-          title: '간단 아침',
-          status: 'suggested',
-        };
-      }
-      if (slot.mealType === 'lunch') {
-        return {
-          ...slot,
-          patternId: easy?.id,
-          title: '간단 점심',
-          status: 'suggested',
+          patternId: null,
+          sauceId: null,
+          protein: null,
+          title: '',
+          status: 'empty',
         };
       }
       return {

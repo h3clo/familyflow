@@ -1,4 +1,5 @@
 import { uid } from '../lib/id.js';
+import { normalizeCategory } from './categories.js';
 
 export const LOCATIONS = [
   { id: 'fridge', label: '냉장고' },
@@ -30,9 +31,7 @@ export function createInventoryItem(partial = {}) {
     status,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
     unit: String(partial.unit || '').trim() || null,
-    category: ['food', 'household', 'other'].includes(partial.category)
-      ? partial.category
-      : 'other',
+    category: normalizeCategory(partial.category),
     note: String(partial.note || '').slice(0, 200),
     updatedAt: new Date().toISOString(),
   };

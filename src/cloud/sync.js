@@ -5,6 +5,7 @@
  */
 
 import { ensureActiveList } from '../domain/shopping.js';
+import { normalizeCategory } from '../domain/categories.js';
 import { getSupabaseClient } from './client.js';
 
 export function assertHouseholdScope(householdId, rowHouseholdId) {
@@ -56,7 +57,7 @@ export function localStateToCloudRows(state, householdId) {
     quantity: i.quantity,
     unit: i.unit || '개',
     priority: i.priority === 'nice' ? 'nice' : 'must',
-    category: ['food', 'household', 'other'].includes(i.category) ? i.category : 'other',
+    category: normalizeCategory(i.category),
     estimated_price: i.estimatedPrice ?? null,
     note: i.note || '',
     checked: !!i.checked,
@@ -73,7 +74,7 @@ export function localStateToCloudRows(state, householdId) {
     status: i.status,
     quantity: i.quantity ?? null,
     unit: i.unit || null,
-    category: i.category || 'other',
+    category: normalizeCategory(i.category),
     note: i.note || '',
     updated_at: i.updatedAt || new Date().toISOString(),
   }));
