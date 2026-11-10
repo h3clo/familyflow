@@ -4,6 +4,8 @@
 앱은 `previewProposal` → 사용자 승인 → `applyProposal` 순으로만 저장한다.  
 (NVIDIA NIM은 현재 런타임 경로가 아니다 — [DECISIONS.md](DECISIONS.md) §4.)
 
+**승인 ≠ 사실 확인.** op payload에는 사용자가 확인·입력한 값(또는 이미 확인된 재고 상태)만 넣는다. 미확인 재고를 `enough`/`quantity:1`로 추정해 넣지 않는다. ([AGENTS.md](../AGENTS.md) 데이터 보존)
+
 정책 요약: [DECISIONS.md](DECISIONS.md) §5.
 
 ## 객체 형태

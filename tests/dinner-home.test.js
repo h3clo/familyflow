@@ -26,8 +26,10 @@ test('offers starter dinners when inventory is empty', () => {
   assert.equal(offer.status, 'offer');
   assert.equal(offer.offer.stockStatus, 'untracked');
   assert.equal(offer.offer.inventoryId, null);
-  assert.ok(offer.offer.reasons.some((r) => /재고 등록 전/.test(r)));
+  assert.ok(offer.offer.reasons.some((r) => /재고 미확인/.test(r)));
+  assert.equal(offer.offer.stockLabel, '재고 미확인 · 가정 제안');
   assert.equal(offer.offer.proposal.ops[0].op, 'meals.confirm_dinner');
+  assert.equal(offer.offer.proposal.ops.some((o) => o.op.startsWith('inventory.')), false);
 });
 
 test('unknown-only inventory still gets starter dinners (does not treat unknown as stock)', () => {
@@ -104,12 +106,14 @@ test('이대로 apply confirms dinner after preview', () => {
   assert.equal(buildDinnerHomeOffer(state).status, 'confirmed');
 });
 
-test('listDinnerCandidates sorts enough before out', () => {
+test('listDinnerCandidates still prefers enough over out when effort/recent match', () => {
   const list = listDinnerCandidates(
     baseState([
       { id: 'a', name: '닭고기', status: 'out' },
       { id: 'b', name: '고등어', status: 'enough' },
     ]),
   );
-  assert.equal(list[0].protein, '고등어');
+  const topFish = list.find((c) => c.protein === '고등어');
+  const topChicken = list.find((c) => c.protein === '닭고기');
+  assert.ok(topFish.score.total > topChicken.score.total);
 });

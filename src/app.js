@@ -31,7 +31,10 @@ import {
 } from './domain/suggestions.js';
 import { ProposalError } from './domain/proposals.js';
 import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
-import { buildDinnerHomeOffer } from './domain/dinnerHome.js';
+import {
+  buildDinnerHomeOffer,
+  createStockRegisterProposalFromUserInput,
+} from './domain/dinnerHome.js';
 import { resolveDinnerVisual } from './domain/dinnerVisual.js';
 import { nextFoodAction, normalizeFoodNav } from './domain/foodHub.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
@@ -103,6 +106,8 @@ export function createApp(root) {
   let pendingApproval = null;
   /** Cycle index for home dinner 「바꾸기」 alternatives (session only). */
   let dinnerAltIndex = 0;
+  /** Session-only stock confirm form for untracked dinner proteins. */
+  let stockRegisterDraft = null;
   /** @type {{ role: 'user'|'assistant', text: string, kind?: string, engine?: string }[]} */
   let chatLog = [];
   let chatBusy = false;
@@ -758,24 +763,35 @@ export function createApp(root) {
 
     const offer = dinnerHome.offer;
     const visual = resolveDinnerVisual(state, offer);
+    const stockChip = offer.stockLabel
+      ? `<p class="dinner-stock-chip" role="status">${esc(offer.stockLabel)}</p>`
+      : '';
+    const reasonList = renderDinnerReasons(offer.reasons, offer.unknowns || []);
     const actions = `<div class="dinner-actions">
       <button type="button" class="primary block" data-act="dinner-accept">이대로</button>
       <button type="button" class="dinner-swap" data-act="dinner-swap" ${offer.hasAlt ? '' : 'disabled'}>다른 후보로 바꾸기</button>
-      <p class="fine">승인 후에만 저장돼요</p>
+      ${
+        offer.canRegisterStock
+          ? stockRegisterDraft?.protein === offer.protein
+            ? renderStockRegisterForm(offer.protein)
+            : `<button type="button" class="secondary block" data-act="dinner-register-stock">재고 확인 후 등록</button>`
+          : ''
+      }
+      <p class="fine">저녁·재고 모두 승인 후에만 저장돼요</p>
     </div>`;
 
     if (immersive && visual.imageSrc) {
       return dinnerStage({
         visual,
         badgeLabel: '저장 전',
-          kicker: '오늘 저녁\n이걸로 할까요',
+        kicker: '오늘 저녁\n이걸로 할까요',
         title: offer.title,
         support:
           offer.stockStatus === 'untracked'
-            ? '재고 등록 전에도 먼저 골라 볼 수 있어요.'
-            : '확인된 재고만 근거로 골랐어요.',
-        reasons: offer.reasons,
-        unknowns: offer.unknowns || [],
+            ? '재고를 추측하지 않아요. 가정 제안만 보여 드려요.'
+            : '확인된 재고·식단 신호를 섞어 골랐어요.',
+        stockChip,
+        reasonHtml: reasonList,
         actions,
         badge,
         aiBadge,
@@ -786,25 +802,66 @@ export function createApp(root) {
       <div class="dinner-hero-body">
         <p class="label">오늘 저녁 추천 · 저장 전</p>
         <h2>${esc(offer.title)}</h2>
+        ${stockChip}
         <p class="hint">${
           offer.stockStatus === 'untracked'
-            ? '재고 등록 전에도 먼저 골라 볼 수 있어요.'
-            : '확인된 재고만 근거로 골랐어요.'
+            ? '재고를 추측하지 않아요. 가정 제안만 보여 드려요.'
+            : '확인된 재고·식단 신호를 섞어 골랐어요.'
         }</p>
-        <ul class="dinner-reasons">
-          ${offer.reasons.map((r, i) => `<li><i aria-hidden="true">${i + 1}</i><span>${esc(r)}</span></li>`).join('')}
-        </ul>
-        ${
-          offer.unknowns?.length
-            ? `<p class="hint">${offer.unknowns.map((u) => esc(u)).join(' · ')}</p>`
-            : ''
-        }
+        ${reasonList}
         ${actions}
       </div>
     </section>`;
   }
 
-  function dinnerStage({ visual, badgeLabel, kicker, title, support, reasons, unknowns, actions, badge, aiBadge }) {
+  function renderStockRegisterForm(protein) {
+    return `<form data-form="dinner-stock-register" class="dinner-stock-form" aria-label="재고 확인 후 등록">
+      <p class="hint"><strong>${esc(protein)}</strong> — 확인한 값만 적어요. 비운 수량·단위는 저장하지 않아요.</p>
+      <label>보유 상태
+        <select name="status" required>
+          <option value="">선택해 주세요</option>
+          <option value="enough">충분함</option>
+          <option value="low">부족함</option>
+          <option value="out">없음</option>
+          <option value="unknown">모름</option>
+        </select>
+      </label>
+      <label>보관 위치
+        <select name="location" required>
+          <option value="">선택해 주세요</option>
+          <option value="fridge">냉장고</option>
+          <option value="freezer">냉동실</option>
+          <option value="pantry">실온·팬트리</option>
+          <option value="storage">창고</option>
+        </select>
+      </label>
+      <label>수량 (선택)<input name="quantity" type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="모를면 비워 두세요" /></label>
+      <label>단위 (선택)<input name="unit" maxlength="12" placeholder="예: 개, 마리 (선택)" /></label>
+      <input type="hidden" name="name" value="${esc(protein)}" />
+      <div class="row-actions wrap">
+        <button type="submit" class="primary">미리보기</button>
+        <button type="button" class="ghost" data-act="dinner-stock-cancel">취소</button>
+      </div>
+    </form>`;
+  }
+
+  function renderDinnerReasons(reasons = [], unknowns = []) {
+    const items = [
+      ...reasons.map((r) => ({ text: r, kind: 'reason' })),
+      ...unknowns.map((u) => ({ text: u, kind: 'unknown' })),
+    ];
+    if (!items.length) return '';
+    return `<ul class="dinner-reasons" aria-label="추천 근거">${items
+      .map(
+        (item, i) =>
+          `<li class="${item.kind === 'unknown' ? 'is-unknown' : ''}"><span class="dinner-reason-idx" aria-hidden="true">${
+            i + 1
+          }</span><span class="dinner-reason-text">${esc(item.text)}</span></li>`,
+      )
+      .join('')}</ul>`;
+  }
+
+  function dinnerStage({ visual, badgeLabel, kicker, title, support, stockChip = '', reasonHtml = '', actions, badge, aiBadge }) {
     return `<section class="dinner-stage" aria-label="오늘 저녁">
       <div class="dinner-media" style="background-image:url('${esc(visual.imageSrc)}')" role="img" aria-label="${esc(
         visual.patternName || '저녁 패턴',
@@ -823,14 +880,9 @@ export function createApp(root) {
       <div class="dinner-hero-body">
         <p class="label">오늘 저녁 추천</p>
         <h2>${esc(title)}</h2>
+        ${stockChip || ''}
         ${support ? `<p class="hint">${esc(support)}</p>` : ''}
-        ${
-          reasons?.length
-            ? `<ul class="dinner-reasons">${reasons
-                .map((r, i) => `<li><i aria-hidden="true">${i + 1}</i><span>${esc(r)}</span></li>`)
-                .join('')}</ul>`
-            : ''
-        }
+        ${reasonHtml || ''}
         ${actions || ''}
       </div>
     </section>`;
@@ -1371,6 +1423,57 @@ export function createApp(root) {
         }
       };
     });
+
+    root.querySelectorAll('[data-act=dinner-register-stock]').forEach((btn) => {
+      btn.onclick = () => {
+        const dinnerHome = buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex });
+        const protein = dinnerHome.offer?.protein;
+        if (!dinnerHome.offer?.canRegisterStock || !protein) {
+          setToast('지금은 등록할 가정 재료가 없어요.');
+          return;
+        }
+        stockRegisterDraft = { protein };
+        pendingApproval = null;
+        render();
+      };
+    });
+
+    root.querySelectorAll('[data-act=dinner-stock-cancel]').forEach((btn) => {
+      btn.onclick = () => {
+        stockRegisterDraft = null;
+        pendingApproval = null;
+        setToast('재고 등록을 취소했어요. 목록은 그대로예요.');
+      };
+    });
+
+    const stockForm = root.querySelector('[data-form=dinner-stock-register]');
+    if (stockForm) {
+      stockForm.onsubmit = (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(stockForm));
+        const built = createStockRegisterProposalFromUserInput({
+          name: fd.name,
+          status: fd.status,
+          location: fd.location,
+          quantity: fd.quantity,
+          unit: fd.unit,
+        });
+        if (!built.ok) {
+          setToast(built.error || '입력값을 확인해 주세요.');
+          return;
+        }
+        try {
+          const preview = previewProposal(state, built.proposal);
+          pendingApproval = { proposal: built.proposal, preview };
+          stockRegisterDraft = null;
+          render();
+          if (!preview.ok) setToast(preview.errors[0]?.message || '이 제안은 적용할 수 없어요.');
+        } catch (err) {
+          pendingApproval = null;
+          setToast(err.message || '미리보기에 실패했어요.');
+        }
+      };
+    }
 
     root.querySelectorAll('[data-act=dinner-swap]').forEach((btn) => {
       btn.onclick = () => {
