@@ -5,7 +5,10 @@ import {
   formatDinnerOfferTitle,
   listDinnerCandidates,
 } from '../src/domain/dinnerHome.js';
+import { resolveDinnerVisual } from '../src/domain/dinnerVisual.js';
 import { previewProposal, applyProposal } from '../src/domain/proposals.js';
+import { createEmptyState } from '../src/domain/state.js';
+import { seedState } from '../src/domain/seed.js';
 
 function baseState(inventory = []) {
   return {
@@ -73,18 +76,18 @@ test('offers dinner from enough protein with 이대로 proposal', () => {
   assert.equal(state.todayDinner, null);
 });
 
-test('formatDinnerOfferTitle puts sauce in title, not protein', () => {
+test('formatDinnerOfferTitle is pattern only (sauce/protein live in chips)', () => {
   assert.equal(
     formatDinnerOfferTitle({
       patternName: '야채구이',
       sauceName: '간장마늘 양념',
       protein: '고등어',
     }),
-    '야채구이 · 간장마늘',
+    '야채구이',
   );
   assert.equal(
     formatDinnerOfferTitle({ patternName: '야채찜', sauceName: '부추장', protein: '닭고기' }),
-    '야채찜 · 부추장',
+    '야채찜',
   );
 });
 
@@ -111,6 +114,16 @@ test('prefers household default sauces for roast chicken', () => {
   assert.equal(roast.sauceName, '간장마늘 양념');
   const steam = listDinnerCandidates(state).find((c) => c.patternName === '야채찜');
   assert.equal(steam.sauceName, '마늘 간장 소스');
+});
+
+test('starter candidates expose many pattern×sauce hero photos, not only garlic-soy', () => {
+  const state = seedState(createEmptyState());
+  const list = listDinnerCandidates(state);
+  const files = new Set(
+    list.map((c) => (resolveDinnerVisual(state, c).imageSrc || '').replace(/\?.*$/, '').split('/').pop()),
+  );
+  assert.ok(files.size >= 8, `expected many prebakes in rotation, got ${[...files]}`);
+  assert.ok([...files].some((f) => f.includes('tomato') || f.includes('buchujang') || f.includes('sriracha')));
 });
 
 test('out-of-stock protein includes shopping.add in proposal', () => {
