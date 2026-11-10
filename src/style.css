@@ -889,7 +889,42 @@ details summary { cursor: pointer; font-weight: 700; }
   padding-inline: 8px;
   font-size: 0.88rem;
 }
-.approval { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); }
+.approval-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: end center;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: approval-fade 180ms var(--ease);
+}
+.approval-sheet {
+  width: min(100%, 420px);
+  max-height: min(78dvh, 640px);
+  overflow: auto;
+  margin: 0;
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
+  border-radius: 20px;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.28);
+  animation: approval-rise 220ms var(--ease);
+}
+@media (min-width: 720px) {
+  .approval-layer {
+    place-items: center;
+    padding: 24px;
+  }
+}
+@keyframes approval-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes approval-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .change-list, .error-list {
   margin: 10px 0;
   padding-left: 1.1rem;
@@ -1086,6 +1121,7 @@ form.cloud-auth {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .approval-layer, .approval-sheet { animation: none; }
   .shell, .toast, .primary, .secondary, .ghost, .food-seg, .tabbar .tab {
     animation: none;
     transition: none;

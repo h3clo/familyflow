@@ -514,8 +514,7 @@ export function createApp(root) {
           </div>
         </header>`
         }
-        <main class="main">
-          ${pendingApproval ? approvalPanel(pendingApproval) : ''}
+        <main class="main" ${pendingApproval ? 'inert' : ''}>
           ${
             authGate
               ? authGateView()
@@ -532,7 +531,7 @@ export function createApp(root) {
         ${
           authGate
             ? ''
-            : `<nav class="tabbar" aria-label="주요 메뉴">
+            : `<nav class="tabbar" aria-label="주요 메뉴" ${pendingApproval ? 'inert' : ''}>
           <div class="tabbar-inner">
             ${tab('home', '홈', 'home')}
             ${tab('food', '식생활', 'food')}
@@ -540,8 +539,14 @@ export function createApp(root) {
           </div>
         </nav>`
         }
+        ${pendingApproval ? approvalPanel(pendingApproval) : ''}
       </div>`;
     bind();
+    if (pendingApproval) {
+      const sheet = root.querySelector('.approval-sheet');
+      const focusEl = sheet?.querySelector('.primary, .ghost, [data-act]');
+      requestAnimationFrame(() => focusEl?.focus?.());
+    }
   }
 
   function settingsBtn(opts = {}) {
@@ -937,22 +942,24 @@ export function createApp(root) {
   }
 
   function approvalPanel({ proposal, preview }) {
-    return `<section class="panel approval" role="dialog" aria-label="변경 미리보기">
-      <h2>변경 미리보기</h2>
-      <p><strong>${esc(proposal.title)}</strong></p>
-      <p class="hint">${esc(proposal.reason)}</p>
-      ${
-        preview.ok
-          ? `<ul class="change-list">${preview.changes.map((c) => `<li>${esc(c.text)}</li>`).join('')}</ul>
-             <p class="hint">승인 전에는 데이터가 바뀌지 않아요.</p>
-             <div class="suggest-actions">
-               <button type="button" class="primary" data-act="confirm-proposal">승인하고 저장</button>
-               <button type="button" class="ghost" data-act="cancel-proposal">취소</button>
-             </div>`
-          : `<ul class="error-list">${preview.errors.map((e) => `<li>${esc(e.message)}</li>`).join('')}</ul>
-             <button type="button" class="ghost" data-act="cancel-proposal">닫기</button>`
-      }
-    </section>`;
+    return `<div class="approval-layer" role="presentation">
+      <section class="panel approval approval-sheet" role="dialog" aria-modal="true" aria-labelledby="approval-title" tabindex="-1">
+        <h2 id="approval-title">변경 미리보기</h2>
+        <p><strong>${esc(proposal.title)}</strong></p>
+        <p class="hint">${esc(proposal.reason)}</p>
+        ${
+          preview.ok
+            ? `<ul class="change-list">${preview.changes.map((c) => `<li>${esc(c.text)}</li>`).join('')}</ul>
+               <p class="hint">승인 전에는 데이터가 바뀌지 않아요.</p>
+               <div class="suggest-actions">
+                 <button type="button" class="primary" data-act="confirm-proposal">승인하고 저장</button>
+                 <button type="button" class="ghost" data-act="cancel-proposal">취소</button>
+               </div>`
+            : `<ul class="error-list">${preview.errors.map((e) => `<li>${esc(e.message)}</li>`).join('')}</ul>
+               <button type="button" class="ghost" data-act="cancel-proposal">닫기</button>`
+        }
+      </section>
+    </div>`;
   }
 
   function suggestCard(s) {
@@ -1581,6 +1588,18 @@ export function createApp(root) {
         render();
       };
     });
+
+    const approvalLayer = root.querySelector('.approval-layer');
+    if (approvalLayer) {
+      approvalLayer.onclick = (e) => {
+        if (e.target === approvalLayer) {
+          pendingApproval = null;
+          render();
+        }
+      };
+      const sheet = approvalLayer.querySelector('.approval-sheet');
+      if (sheet) sheet.onclick = (e) => e.stopPropagation();
+    }
 
     root.querySelectorAll('[data-act=dismiss-suggestion]').forEach((btn) => {
       btn.onclick = () => {
