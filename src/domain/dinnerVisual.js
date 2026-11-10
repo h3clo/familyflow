@@ -17,6 +17,7 @@ const SAUCE_KEYS = [
   { match: /토마토/, key: 'tomato-onion' },
   { match: /양꼬치|쯔란/, key: 'lamb-skewer' },
   { match: /허니|머스터드|mustard/i, key: 'honey-mustard' },
+  // Match legacy 「넛맥 버터 시즈닝」 and current 「넛맥 올리브유 시즈닝」.
   { match: /넛맥|육두구|nutmeg/i, key: 'nutmeg' },
   // garlic-soy shared by 찜「마늘 간장」and 구이「간장마늘」
   { match: /마늘\s*간장|간장\s*마늘|마늘간장|간장마늘/, key: 'garlic-soy' },

@@ -1153,7 +1153,7 @@ export function createApp(root) {
             <select name="location" aria-label="위치">${LOCATIONS.map((l) => `<option value="${l.id}" ${item.location === l.id ? 'selected' : ''}>${l.label}</option>`).join('')}</select>
             <select name="status" aria-label="상태">${STATUSES.map((s) => `<option value="${s.id}" ${item.status === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}</select>
             <select name="category" aria-label="분류">${categoryOptionsHtml(item.category)}</select>
-            <input name="quantity" type="number" min="0" step="any" value="${item.quantity ?? ''}" placeholder="수량" aria-label="수량" />
+            <input name="quantity" type="number" min="0" step="any" value="${item.quantity ?? ''}" placeholder="비우면 수량 미확인" aria-label="수량" title="비우면 수량 미확인" />
             <input name="unit" maxlength="12" value="${esc(item.unit || '')}" placeholder="단위" aria-label="단위" />
           </div>
           <div class="row-actions">
@@ -1164,7 +1164,11 @@ export function createApp(root) {
       </li>`;
     }
     return `<li>
-      <div><strong>${esc(item.name)}</strong><small>${item.quantity != null ? `${item.quantity}${esc(item.unit || '')} · ` : ''}${catLabel(item.category)}</small></div>
+      <div><strong>${esc(item.name)}</strong><small>${
+        item.quantity != null
+          ? `${item.quantity}${esc(item.unit || '')} · `
+          : '수량 미확인 · '
+      }${catLabel(item.category)}</small></div>
       <div class="status-chips">${STATUSES.map(
         (s) =>
           `<button type="button" class="${item.status === s.id ? 'on' : ''}" data-act="inv-status" data-id="${item.id}" data-status="${s.id}">${s.label}</button>`,

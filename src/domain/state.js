@@ -4,7 +4,7 @@ import { seedSauces, seedState } from './seed.js';
 
 export function createEmptyState() {
   return {
-    version: 8,
+    version: 9,
     household: {
       id: uid(),
       name: '우리 집',
@@ -133,6 +133,36 @@ export function migrateState(raw) {
       }
     }
     state.version = 8;
+  }
+  if (state.version < 9) {
+    // Nutmeg default is olive oil (no butter). Keep ids; rename legacy seed label.
+    for (const s of state.sauces || []) {
+      if (!s || typeof s !== 'object') continue;
+      const isLegacyNutmeg =
+        s.name === '넛맥 버터 시즈닝' ||
+        (/넛맥|육두구/.test(String(s.name || '')) &&
+          Array.isArray(s.components) &&
+          s.components.some((c) => /버터/.test(String(c?.name || ''))));
+      if (!isLegacyNutmeg) continue;
+      if (s.name === '넛맥 버터 시즈닝') s.name = '넛맥 올리브유 시즈닝';
+      s.visualKey = s.visualKey || 'nutmeg';
+      s.components = [
+        { name: '넛맥(육두구)', prep: '살짝' },
+        { name: '올리브유' },
+        { name: '후추' },
+        { name: '소금' },
+      ];
+      s.notes = '기본은 올리브유. 구운 야채·닭에 따뜻하게. 과하면 쓰니 소량.';
+    }
+    if (state.todayDinner?.sauceName === '넛맥 버터 시즈닝') {
+      state.todayDinner.sauceName = '넛맥 올리브유 시즈닝';
+    }
+    for (const day of state.mealPlan?.days || []) {
+      for (const slot of day.slots || []) {
+        if (slot?.sauceName === '넛맥 버터 시즈닝') slot.sauceName = '넛맥 올리브유 시즈닝';
+      }
+    }
+    state.version = 9;
   }
   return state;
 }

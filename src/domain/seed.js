@@ -112,17 +112,17 @@ export function seedSauces() {
     },
     {
       id: uid(),
-      name: '넛맥 버터 시즈닝',
+      name: '넛맥 올리브유 시즈닝',
       components: [
         { name: '넛맥(육두구)', prep: '살짝' },
-        { name: '버터 또는 올리브유' },
+        { name: '올리브유' },
         { name: '후추' },
         { name: '소금' },
       ],
       exactAmounts: false,
       forPatterns: ['야채구이'],
       visualKey: 'nutmeg',
-      notes: '구운 야채·닭에 따뜻하게. 과하면 쓰니 소량.',
+      notes: '기본은 올리브유. 구운 야채·닭에 따뜻하게. 과하면 쓰니 소량.',
     },
   ];
 }

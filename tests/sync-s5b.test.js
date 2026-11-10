@@ -91,7 +91,7 @@ test('localStateToCloudRows includes family_profiles', () => {
   assert.equal(rows.familyProfiles[0].display_name, '아빠');
 });
 
-test('state migrates through v6–v8 food hub and sauce catalog', () => {
+test('state migrates through v6–v9 food hub and sauce catalog', () => {
   const raw = createEmptyState();
   raw.version = 5;
   delete raw.cloud.mode;
@@ -99,12 +99,12 @@ test('state migrates through v6–v8 food hub and sauce catalog', () => {
   raw.settings.view = 'shopping';
   raw.sauces = [{ id: 'old', name: '토마토소스' }];
   const m = migrateState(raw);
-  assert.equal(m.version, 8);
+  assert.equal(m.version, 9);
   assert.equal(m.cloud.mode, 'local');
   assert.equal(m.members[0].roleLabel, '관리자');
   assert.equal(m.settings.view, 'food');
   assert.equal(m.settings.foodSegment, 'shopping');
-  assert.ok(m.sauces.some((s) => s.name === '넛맥 버터 시즈닝'));
+  assert.ok(m.sauces.some((s) => s.name === '넛맥 올리브유 시즈닝'));
 });
 
 test('sync badge labels cover statuses', () => {

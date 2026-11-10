@@ -48,14 +48,19 @@ export function updateInventoryItem(state, id, patch) {
   if (!name) throw new Error('재고 이름이 필요해요.');
   const location = LOCATIONS.some((l) => l.id === patch.location) ? patch.location : item.location;
   const status = STATUSES.some((s) => s.id === patch.status) ? patch.status : item.status;
-  const quantity =
-    patch.quantity === '' || patch.quantity == null
-      ? item.quantity
-      : Number(patch.quantity);
+  // Empty string / null from the edit form means "수량 미확인" — clear intentionally.
+  // Omitted key (undefined / not in patch) keeps the previous quantity.
+  if (Object.prototype.hasOwnProperty.call(patch, 'quantity')) {
+    if (patch.quantity === '' || patch.quantity == null) {
+      item.quantity = null;
+    } else {
+      const q = Number(patch.quantity);
+      item.quantity = Number.isFinite(q) && q > 0 ? q : null;
+    }
+  }
   item.name = name;
   item.location = location;
   item.status = status;
-  item.quantity = Number.isFinite(quantity) && quantity > 0 ? quantity : null;
   if (patch.unit !== undefined) item.unit = String(patch.unit || '').trim() || null;
   if (patch.category != null && String(patch.category).trim()) {
     item.category = normalizeCategory(patch.category);
