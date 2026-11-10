@@ -756,6 +756,19 @@ details summary { cursor: pointer; font-weight: 700; }
 .inv-list > li > .status-chips {
   grid-column: 1 / -1;
 }
+.inv-list > li > .row-actions {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+.inv-list > li.inv-row.edit {
+  grid-template-columns: 1fr;
+}
+.inv-list > li.inv-row.edit > form {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
 .shop-row.done { opacity: 0.62; }
 .shop-row.edit { grid-template-columns: 1fr; }
 .check { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }

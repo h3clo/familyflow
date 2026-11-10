@@ -1,5 +1,5 @@
 import { uid } from '../lib/id.js';
-import { parseQuickAdd } from './quick-add.js';
+import { parseQuickAdd, inferCategory } from './quick-add.js';
 import { normalizeCategory } from './categories.js';
 
 export function createShoppingList({ title, budgetWon } = {}) {
@@ -108,7 +108,7 @@ function normalizeItem(partial) {
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
     unit: String(partial.unit || '개').trim() || '개',
     priority: partial.priority === 'nice' ? 'nice' : 'must',
-    category: normalizeCategory(partial.category),
+    category: resolveItemCategory(name, partial.category),
     estimatedPrice:
       partial.estimatedPrice == null || partial.estimatedPrice === ''
         ? null
@@ -130,12 +130,19 @@ function normalizePatch(patch) {
     out.quantity = Number.isFinite(q) && q > 0 ? q : 1;
   }
   if (out.priority != null) out.priority = out.priority === 'nice' ? 'nice' : 'must';
+  if (out.category != null) out.category = normalizeCategory(out.category);
   if (out.estimatedPrice === '' || out.estimatedPrice == null) out.estimatedPrice = null;
   else if (out.estimatedPrice != null) out.estimatedPrice = Math.max(0, Math.round(Number(out.estimatedPrice)) || 0);
   if (out.note != null) out.note = String(out.note).slice(0, 200);
   delete out.id;
   delete out.createdAt;
   return out;
+}
+
+/** Prefer an explicit category; otherwise infer from the name. */
+function resolveItemCategory(name, explicit) {
+  if (explicit != null && String(explicit).trim()) return normalizeCategory(explicit);
+  return inferCategory(name);
 }
 
 /** After checkout: propose inventory updates for checked items. */
