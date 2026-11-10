@@ -22,12 +22,16 @@ self.addEventListener('activate', (event) => {
       const stale = keys.filter((k) => k !== CACHE);
       await Promise.all(stale.map((k) => caches.delete(k)));
       await self.clients.claim();
-      // Force open tabs onto the new shell after a deploy (fixes legacy cache-first SW).
+      // iOS home-screen PWAs often reject Client.navigate — ask clients to reload instead.
       if (stale.length) {
         const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-        await Promise.all(
-          windows.map((client) => ('navigate' in client ? client.navigate(client.url) : Promise.resolve())),
-        );
+        for (const client of windows) {
+          try {
+            client.postMessage({ type: 'familyflow-sw-updated', buildId: BUILD_ID });
+          } catch {
+            /* ignore */
+          }
+        }
       }
     })(),
   );
