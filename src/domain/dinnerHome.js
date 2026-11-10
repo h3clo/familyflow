@@ -18,6 +18,28 @@ export const STARTER_PROTEINS = ['닭고기', '고등어', '돼지고기', '두�
 export const UNTRACKED_STOCK_LABEL = '재고 미확인 · 가정 제안';
 
 /**
+ * Hero title matches prebaked pattern×sauce photos.
+ * Protein is a pairing suggestion — show separately as 곁들임, not in the title.
+ */
+export function formatDinnerOfferTitle({ patternName, sauceName, protein } = {}) {
+  const pattern = String(patternName || '').trim();
+  const sauce = shortenSauceLabel(sauceName);
+  if (pattern && sauce) return `${pattern} · ${sauce}`;
+  if (pattern) return pattern;
+  return String(protein || '').trim() || '오늘 저녁';
+}
+
+/** Trim trailing 소스/양념 noise for compact titles. */
+export function shortenSauceLabel(name) {
+  return String(name || '')
+    .trim()
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*(소스|양념|시즈닝)\s*$/g, '')
+    .trim();
+}
+
+/**
  * @param {object} state
  * @param {{ altIndex?: number }} [opts]
  */
@@ -259,7 +281,11 @@ export function listDinnerCandidates(state) {
         unknowns.push(`소스(${sauce.name}) 재료 재고는 확인하지 않음`);
       }
 
-      const title = pattern ? `${pattern.name} · ${source.name}` : source.name;
+      const title = formatDinnerOfferTitle({
+        patternName: pattern?.name || '',
+        sauceName: sauce?.name || '',
+        protein: source.name,
+      });
       const score = scoreDinnerCandidate(
         {
           stockStatus: source.stockStatus,

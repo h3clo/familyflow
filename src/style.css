@@ -151,10 +151,6 @@ select option {
   .dinner-media {
     border-radius: var(--radius) var(--radius) 0 0;
   }
-  .dinner-kicker {
-    font-size: 1.4rem;
-    bottom: 44px;
-  }
   .main {
     gap: 12px;
   }
@@ -221,6 +217,13 @@ select option {
   padding: 0;
   flex-shrink: 0;
   transition: background 160ms var(--ease), color 160ms var(--ease), border-color 160ms var(--ease);
+}
+.settings-btn .settings-ico {
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  overflow: visible;
 }
 .settings-btn.on {
   background: var(--ink);
@@ -411,7 +414,7 @@ select option {
   z-index: 2;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   color: #fff;
 }
@@ -441,23 +444,6 @@ select option {
   border-color: rgba(255, 255, 255, 0.3);
   color: #fff;
   backdrop-filter: blur(8px);
-}
-.dinner-kicker {
-  position: absolute;
-  left: 18px;
-  right: 18px;
-  bottom: 64px;
-  z-index: 2;
-  margin: 0;
-  color: #fff;
-  font-family: var(--display);
-  font-size: clamp(1.65rem, 6vw, 1.95rem);
-  font-weight: 800;
-  letter-spacing: -0.045em;
-  line-height: 1.28;
-  max-width: 12ch;
-  text-shadow: 0 10px 28px rgba(15, 23, 42, 0.45);
-  white-space: pre-line;
 }
 .dinner-media-badge {
   position: absolute;
@@ -494,13 +480,20 @@ select option {
   color: #0f172a;
 }
 .dinner-hero-body > .hint,
-.dinner-hero-body > .dinner-stock-chip {
+.dinner-hero-body > .dinner-meta-chips {
   margin-top: 10px;
 }
+.dinner-meta-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+.dinner-meta-chip,
 .dinner-stock-chip {
   display: inline-flex;
   align-items: center;
-  margin: 10px 0 0;
+  margin: 0;
   padding: 6px 10px;
   border-radius: 999px;
   background: #eef2ff;
@@ -510,6 +503,14 @@ select option {
   letter-spacing: -0.01em;
   line-height: 1.3;
   max-width: 100%;
+}
+.dinner-meta-chip-sauce {
+  background: #fff7ed;
+  color: #9a3412;
+}
+.dinner-meta-chip-protein {
+  background: #f0fdf4;
+  color: #166534;
 }
 .dinner-stock-form {
   display: grid;
@@ -546,6 +547,7 @@ select option {
   background-color: #fff;
 }
 @media (max-width: 420px) {
+  .dinner-meta-chip,
   .dinner-stock-chip {
     font-size: 0.8rem;
     padding: 7px 12px;
