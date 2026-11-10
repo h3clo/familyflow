@@ -117,10 +117,40 @@ html {
 }
 .top-meta {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
   flex-shrink: 0;
+}
+.settings-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #475569;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 160ms var(--ease), color 160ms var(--ease), border-color 160ms var(--ease);
+}
+.settings-btn.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #f8fafc;
+}
+.settings-btn.on-media {
+  background: rgba(15, 23, 42, 0.42);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+  backdrop-filter: blur(8px);
+}
+.settings-btn.on-media.on {
+  background: #fff;
+  color: var(--ink);
+  border-color: #fff;
 }
 .sync-badge {
   font-size: 0.7rem;
@@ -283,7 +313,13 @@ html {
   font-weight: 800;
   letter-spacing: -0.02em;
 }
-.dinner-media-meta { text-align: right; }
+.dinner-media-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  text-align: right;
+}
 .dinner-house {
   margin: 0;
   font-size: 0.82rem;
@@ -955,7 +991,7 @@ form.cloud-auth {
 .tabbar-inner {
   pointer-events: auto;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 2px;
   padding: 6px;
   border-radius: 22px;
