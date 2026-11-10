@@ -44,8 +44,13 @@ test('nextFoodAction points to inventory when stock is low and list empty', () =
   assert.equal(next.segment, 'inventory');
 });
 
-test('nextFoodAction points to inventory when dinner data is empty', () => {
-  const next = nextFoodAction(state({ inventory: [] }));
-  assert.equal(next.segment, 'inventory');
-  assert.match(next.title, /재료|저녁/);
+test('nextFoodAction points to meals when starters cover empty inventory', () => {
+  const next = nextFoodAction(
+    state({
+      inventory: [],
+      cookingPatterns: [{ id: 'p1', name: '야채찜', method: 'steam', effort: 'medium' }],
+    }),
+  );
+  assert.equal(next.segment, 'meals');
+  assert.match(next.title, /저녁/);
 });

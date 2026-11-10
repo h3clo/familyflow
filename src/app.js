@@ -686,7 +686,10 @@ export function createApp(root) {
         badgeLabel: '저장 전',
           kicker: '오늘 저녁\n이걸로 할까요',
         title: offer.title,
-        support: '확인된 재고만 근거로 골랐어요.',
+        support:
+          offer.stockStatus === 'untracked'
+            ? '재고 등록 전에도 먼저 골라 볼 수 있어요.'
+            : '확인된 재고만 근거로 골랐어요.',
         reasons: offer.reasons,
         unknowns: offer.unknowns || [],
         actions,
@@ -699,7 +702,11 @@ export function createApp(root) {
       <div class="dinner-hero-body">
         <p class="label">오늘 저녁 추천 · 저장 전</p>
         <h2>${esc(offer.title)}</h2>
-        <p class="hint">확인된 재고만 근거로 골랐어요.</p>
+        <p class="hint">${
+          offer.stockStatus === 'untracked'
+            ? '재고 등록 전에도 먼저 골라 볼 수 있어요.'
+            : '확인된 재고만 근거로 골랐어요.'
+        }</p>
         <ul class="dinner-reasons">
           ${offer.reasons.map((r, i) => `<li><i aria-hidden="true">${i + 1}</i><span>${esc(r)}</span></li>`).join('')}
         </ul>

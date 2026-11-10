@@ -21,17 +21,31 @@ function baseState(inventory = []) {
   };
 }
 
-test('empty when no confirmed protein stock', () => {
+test('offers starter dinners when inventory is empty', () => {
   const offer = buildDinnerHomeOffer(baseState([]));
-  assert.equal(offer.status, 'empty');
-  assert.match(offer.emptyReason, /추천할 저녁이 부족/);
+  assert.equal(offer.status, 'offer');
+  assert.equal(offer.offer.stockStatus, 'untracked');
+  assert.equal(offer.offer.inventoryId, null);
+  assert.ok(offer.offer.reasons.some((r) => /재고 등록 전/.test(r)));
+  assert.equal(offer.offer.proposal.ops[0].op, 'meals.confirm_dinner');
 });
 
-test('does not invent unknown inventory as usable stock', () => {
+test('unknown-only inventory still gets starter dinners (does not treat unknown as stock)', () => {
   const offer = buildDinnerHomeOffer(
     baseState([{ id: 'i1', name: '고등어', status: 'unknown' }]),
   );
-  assert.equal(offer.status, 'empty');
+  assert.equal(offer.status, 'offer');
+  assert.equal(offer.offer.stockStatus, 'untracked');
+  assert.ok(!offer.offer.reasons.some((r) => /재고: 고등어/.test(r)));
+});
+
+test('still offers protein-only starters when patterns are missing', () => {
+  const state = baseState([]);
+  state.cookingPatterns = [];
+  const offer = buildDinnerHomeOffer(state);
+  assert.equal(offer.status, 'offer');
+  assert.equal(offer.offer.stockStatus, 'untracked');
+  assert.ok(offer.offer.protein);
 });
 
 test('offers dinner from enough protein with 이대로 proposal', () => {
