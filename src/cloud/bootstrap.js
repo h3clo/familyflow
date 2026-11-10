@@ -10,12 +10,16 @@ import { ensureActiveList } from '../domain/shopping.js';
 const DEFAULT_MEMBER_NAMES = new Set(['나', '관리자']);
 const SEED_PATTERN_NAMES = ['간단 아침', '야채구이', '야채찜'];
 const SEED_SAUCE_NAMES = [
-  '마늘간장 소스',
   '부추장',
-  '스리라차',
-  '양꼬치 시즈닝',
-  '닭 양념 (마늘간장설탕)',
-  '토마토소스',
+  '마늘 간장 소스',
+  '스리라차 소스',
+  '참깨 간장 소스',
+  '겨자 간장 소스',
+  '토마토 양파 소스',
+  '간장마늘 양념',
+  '양꼬치 양념',
+  '허니머스터드 소스',
+  '넛맥 버터 시즈닝',
 ].sort();
 
 /**

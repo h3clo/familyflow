@@ -330,14 +330,20 @@ function guessUnit(name) {
   return '개';
 }
 
-/** Prefer household default sauces from seed (닭 양념 / 마늘간장 등). */
+/** Prefer sensible defaults from the household sauce catalog. */
 function pickPreferredSauce(pool, protein) {
   if (!pool?.length) return null;
   if (/닭/.test(protein || '')) {
-    const chicken = pool.find((s) => /닭/.test(s.name));
-    if (chicken) return chicken;
+    const garlicSoy = pool.find((s) => /간장마늘|마늘\s*간장|마늘간장/.test(s.name));
+    if (garlicSoy) return garlicSoy;
+    const nutmeg = pool.find((s) => /넛맥|육두구/.test(s.name));
+    if (nutmeg) return nutmeg;
   }
-  const garlic = pool.find((s) => /마늘간장/.test(s.name));
+  if (/양|lamb/i.test(protein || '')) {
+    const lamb = pool.find((s) => /양꼬치|쯔란/.test(s.name));
+    if (lamb) return lamb;
+  }
+  const garlic = pool.find((s) => /마늘\s*간장|마늘간장|간장마늘/.test(s.name));
   if (garlic) return garlic;
   return pool[0];
 }

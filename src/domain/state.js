@@ -1,10 +1,10 @@
 import { uid } from '../lib/id.js';
 import { loadState, saveState } from '../lib/storage.js';
-import { seedState } from './seed.js';
+import { seedSauces, seedState } from './seed.js';
 
 export function createEmptyState() {
   return {
-    version: 7,
+    version: 8,
     household: {
       id: uid(),
       name: '우리 집',
@@ -102,6 +102,37 @@ export function migrateState(raw) {
     }
     if (!state.settings.foodSegment) state.settings.foodSegment = 'shopping';
     state.version = 7;
+  }
+  if (state.version < 8) {
+    // Refresh device sauce catalog to the prebaked dinner set when still on defaults /
+    // empty. Custom-named sauces are kept.
+    const names = (state.sauces || []).map((s) => s.name);
+    const legacy = new Set([
+      '스리라차',
+      '마늘간장 소스',
+      '토마토소스',
+      '닭 양념 (마늘간장설탕)',
+      '양꼬치 시즈닝',
+    ]);
+    const onlyLegacyOrEmpty =
+      !names.length || names.every((n) => legacy.has(n) || n === '부추장');
+    if (onlyLegacyOrEmpty) state.sauces = seedSauces();
+    else {
+      for (const s of state.sauces || []) {
+        if (!s.visualKey) {
+          if (/부추/.test(s.name)) s.visualKey = 'buchujang';
+          else if (/참깨/.test(s.name)) s.visualKey = 'sesame-soy';
+          else if (/겨자/.test(s.name)) s.visualKey = 'mustard-soy';
+          else if (/스리라차/.test(s.name)) s.visualKey = 'sriracha';
+          else if (/토마토/.test(s.name)) s.visualKey = 'tomato-onion';
+          else if (/양꼬치|쯔란/.test(s.name)) s.visualKey = 'lamb-skewer';
+          else if (/허니|머스터드/.test(s.name)) s.visualKey = 'honey-mustard';
+          else if (/넛맥|육두구/.test(s.name)) s.visualKey = 'nutmeg';
+          else if (/마늘|간장/.test(s.name)) s.visualKey = 'garlic-soy';
+        }
+      }
+    }
+    state.version = 8;
   }
   return state;
 }

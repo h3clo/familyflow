@@ -13,7 +13,7 @@ function baseState(inventory = []) {
       { id: 'p1', name: '야채구이', method: 'roast', effort: 'medium' },
       { id: 'p2', name: '야채찜', method: 'steam', effort: 'medium' },
     ],
-    sauces: [{ id: 's1', name: '마늘간장 소스', forPatterns: ['야채구이'] }],
+    sauces: [{ id: 's1', name: '간장마늘 양념', forPatterns: ['야채구이'] }],
     shoppingLists: [{ id: 'l1', name: '장보기', budgetWon: 80000, items: [] }],
     settings: { activeListId: 'l1' },
     proposalsMeta: { applied: {}, dismissed: {} },
@@ -80,14 +80,14 @@ test('바꾸기 cycles to another candidate', () => {
 test('prefers household default sauces for roast chicken', () => {
   const state = baseState([{ id: 'i1', name: '닭고기', status: 'enough' }]);
   state.sauces = [
-    { id: 's1', name: '토마토소스', forPatterns: ['야채구이'] },
-    { id: 's2', name: '닭 양념 (마늘간장설탕)', forPatterns: ['야채구이'] },
-    { id: 's3', name: '마늘간장 소스', forPatterns: ['야채찜'] },
+    { id: 's1', name: '토마토 양파 소스', forPatterns: ['야채구이'] },
+    { id: 's2', name: '간장마늘 양념', forPatterns: ['야채구이'] },
+    { id: 's3', name: '마늘 간장 소스', forPatterns: ['야채찜'] },
   ];
   const roast = listDinnerCandidates(state).find((c) => c.patternName === '야채구이');
-  assert.equal(roast.sauceName, '닭 양념 (마늘간장설탕)');
+  assert.equal(roast.sauceName, '간장마늘 양념');
   const steam = listDinnerCandidates(state).find((c) => c.patternName === '야채찜');
-  assert.equal(steam.sauceName, '마늘간장 소스');
+  assert.equal(steam.sauceName, '마늘 간장 소스');
 });
 
 test('out-of-stock protein includes shopping.add in proposal', () => {

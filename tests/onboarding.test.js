@@ -58,12 +58,16 @@ test('buildSyncableFootprint ignores default owner-only seed member', () => {
       { name: '간단 아침' },
     ],
     sauces: [
-      { name: '스리라차' },
       { name: '부추장' },
-      { name: '마늘간장 소스' },
-      { name: '토마토소스' },
-      { name: '닭 양념 (마늘간장설탕)' },
-      { name: '양꼬치 시즈닝' },
+      { name: '마늘 간장 소스' },
+      { name: '스리라차 소스' },
+      { name: '참깨 간장 소스' },
+      { name: '겨자 간장 소스' },
+      { name: '토마토 양파 소스' },
+      { name: '간장마늘 양념' },
+      { name: '양꼬치 양념' },
+      { name: '허니머스터드 소스' },
+      { name: '넛맥 버터 시즈닝' },
     ],
   });
   assert.equal(fp.transactional, 0);
