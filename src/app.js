@@ -31,6 +31,7 @@ import {
 } from './domain/suggestions.js';
 import { ProposalError } from './domain/proposals.js';
 import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
+import { readDeferAuth, writeDeferAuth, hasLocalHouseholdActivity } from './lib/deferAuth.js';
 import {
   buildDinnerHomeOffer,
   createStockRegisterProposalFromUserInput,
@@ -137,7 +138,7 @@ export function createApp(root) {
     inviteCode: '',
     migrationPlan: null,
     migrationText: '',
-    deferAuth: false,
+    deferAuth: readDeferAuth(),
     message: cloudCfg.configured
       ? '공용 관리자 계정으로 로그인하면 Mac·iPhone·iPad에서 같은 집 데이터를 쓸 수 있어요.'
       : '클라우드 미설정 — 로컬만 사용 중이에요.',
@@ -553,15 +554,26 @@ export function createApp(root) {
   }
 
   function authGateView() {
+    const localBusy = hasLocalHouseholdActivity(state);
     return `
       <section class="hero-assist">
-        <p class="lede">처음이라면 공용 관리자 계정으로 시작해 주세요.</p>
-        <h2>로그인 또는 집 만들기</h2>
-        <p class="hint">더보기로 찾아가지 않아도 됩니다. 계정 하나만 만들면 Mac·iPhone·iPad에서 같은 집을 씁니다.</p>
+        <p class="lede">${
+          localBusy
+            ? '이 기기에 이미 장보기·재고·저녁 기록이 있어요.'
+            : '처음이라면 공용 관리자 계정으로 시작해 주세요.'
+        }</p>
+        <h2>${localBusy ? '이어서 쓰거나 로그인' : '로그인 또는 집 만들기'}</h2>
+        <p class="hint">${
+          localBusy
+            ? '새로고침 후에도 로컬 기록은 남아 있어요. 클라우드로 옮기려면 로그인하세요.'
+            : '더보기로 찾아가지 않아도 됩니다. 계정 하나만 만들면 Mac·iPhone·iPad에서 같은 집을 씁니다.'
+        }</p>
       </section>
       ${cloudPanel()}
       <section class="panel muted">
-        <button type="button" class="ghost block" data-act="defer-cloud-auth">잠깐 둘러보기 (이 기기만 · 동기화 안 됨)</button>
+        <button type="button" class="primary block" data-act="defer-cloud-auth">${
+          localBusy ? '이 기기 기록으로 계속' : '잠깐 둘러보기 (이 기기만 · 동기화 안 됨)'
+        }</button>
         <p class="hint">나중에 더보기 → 우리 집 클라우드에서 언제든 로그인할 수 있어요.</p>
       </section>`;
   }
@@ -851,14 +863,23 @@ export function createApp(root) {
       ...unknowns.map((u) => ({ text: u, kind: 'unknown' })),
     ];
     if (!items.length) return '';
-    return `<ul class="dinner-reasons" aria-label="추천 근거">${items
-      .map(
-        (item, i) =>
-          `<li class="${item.kind === 'unknown' ? 'is-unknown' : ''}"><span class="dinner-reason-idx" aria-hidden="true">${
-            i + 1
-          }</span><span class="dinner-reason-text">${esc(item.text)}</span></li>`,
-      )
-      .join('')}</ul>`;
+    const primary = items.slice(0, 2);
+    const rest = items.slice(2);
+    const li = (item, i) =>
+      `<li class="${item.kind === 'unknown' ? 'is-unknown' : ''}"><span class="dinner-reason-idx" aria-hidden="true">${
+        i + 1
+      }</span><span class="dinner-reason-text">${esc(item.text)}</span></li>`;
+    return `<div class="dinner-reasons-wrap">
+      <ul class="dinner-reasons" aria-label="추천 근거">${primary.map((item, i) => li(item, i)).join('')}</ul>
+      ${
+        rest.length
+          ? `<details class="dinner-reasons-more"><summary>근거 ${rest.length}개 더 보기</summary>
+            <ul class="dinner-reasons" aria-label="추가 추천 근거">${rest
+              .map((item, i) => li(item, i + primary.length))
+              .join('')}</ul></details>`
+          : ''
+      }
+    </div>`;
   }
 
   function dinnerStage({ visual, badgeLabel, kicker, title, support, stockChip = '', reasonHtml = '', actions, badge, aiBadge }) {
@@ -983,7 +1004,7 @@ export function createApp(root) {
       </form>
 
       <form class="manual-add" data-form="manual-add">
-        <details>
+        <details ${must.length + nice.length + done.length === 0 ? 'open' : ''}>
           <summary>직접 입력</summary>
           <div class="form-grid">
             <label>품목<input name="name" required maxlength="80" placeholder="휴지" /></label>
@@ -1832,6 +1853,7 @@ export function createApp(root) {
     root.querySelectorAll('[data-act=defer-cloud-auth]').forEach((el) => {
       el.onclick = () => {
         cloudUi.deferAuth = true;
+        writeDeferAuth(true);
         cloudUi.message =
           '이 기기 임시 모드예요. 재고·장보기는 브라우저에만 남고 Supabase에는 안 올라가요. 로그인하면 클라우드가 기본 저장소가 됩니다.';
         render();
@@ -1860,6 +1882,7 @@ export function createApp(root) {
                 '계정을 만들었어요. 이메일 확인이 필요하면 확인 후 로그인해 주세요. 집 이름은 로그인 뒤 한 번만 더 만들면 됩니다.';
             } else if (cloudUi.households.length) {
               cloudUi.deferAuth = false;
+              writeDeferAuth(false);
               cloudUi.message = '공용 계정을 만들었어요. 이미 연결된 집이 있어 그 집을 쓸 수 있어요.';
             } else {
               const hid = await createHousehold(parsed.householdName);
@@ -1871,6 +1894,7 @@ export function createApp(root) {
                 s.household.name = parsed.householdName;
               });
               cloudUi.deferAuth = false;
+              writeDeferAuth(false);
               await refreshCloudSession();
               await activateCloudAsPrimary();
               if (!cloudUi.message) {
@@ -1880,6 +1904,7 @@ export function createApp(root) {
           } else {
             await signInWithEmail(fd.email, fd.password);
             cloudUi.deferAuth = false;
+            writeDeferAuth(false);
             cloudUi.message = '로그인했어요.';
             await refreshCloudSession();
           }
