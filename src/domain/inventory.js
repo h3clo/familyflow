@@ -1,5 +1,6 @@
 import { uid } from '../lib/id.js';
 import { normalizeCategory } from './categories.js';
+import { inferCategory } from './quick-add.js';
 
 export const LOCATIONS = [
   { id: 'fridge', label: '냉장고' },
@@ -31,10 +32,37 @@ export function createInventoryItem(partial = {}) {
     status,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : null,
     unit: String(partial.unit || '').trim() || null,
-    category: normalizeCategory(partial.category),
+    category:
+      partial.category != null && String(partial.category).trim()
+        ? normalizeCategory(partial.category)
+        : inferCategory(name),
     note: String(partial.note || '').slice(0, 200),
     updatedAt: new Date().toISOString(),
   };
+}
+
+export function updateInventoryItem(state, id, patch) {
+  const item = state.inventory.find((x) => x.id === id);
+  if (!item) throw new Error('재고를 찾을 수 없어요.');
+  const name = patch.name != null ? String(patch.name).trim() : item.name;
+  if (!name) throw new Error('재고 이름이 필요해요.');
+  const location = LOCATIONS.some((l) => l.id === patch.location) ? patch.location : item.location;
+  const status = STATUSES.some((s) => s.id === patch.status) ? patch.status : item.status;
+  const quantity =
+    patch.quantity === '' || patch.quantity == null
+      ? item.quantity
+      : Number(patch.quantity);
+  item.name = name;
+  item.location = location;
+  item.status = status;
+  item.quantity = Number.isFinite(quantity) && quantity > 0 ? quantity : null;
+  if (patch.unit !== undefined) item.unit = String(patch.unit || '').trim() || null;
+  if (patch.category != null && String(patch.category).trim()) {
+    item.category = normalizeCategory(patch.category);
+  }
+  if (patch.note != null) item.note = String(patch.note).slice(0, 200);
+  item.updatedAt = new Date().toISOString();
+  return item;
 }
 
 export function upsertInventory(state, partial) {
@@ -46,6 +74,10 @@ export function upsertInventory(state, partial) {
     Object.assign(existing, {
       ...partial,
       name: name || existing.name,
+      category:
+        partial.category != null && String(partial.category).trim()
+          ? normalizeCategory(partial.category)
+          : existing.category,
       updatedAt: new Date().toISOString(),
     });
     return existing;

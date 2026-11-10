@@ -15,6 +15,7 @@ import {
   LOCATIONS,
   STATUSES,
   createInventoryItem,
+  updateInventoryItem,
   setInventoryStatus,
   removeInventory,
   shoppingSuggestionsFromInventory,
@@ -103,6 +104,8 @@ export function createApp(root) {
 
   let toast = '';
   let editingId = null;
+  /** Inventory row currently being edited (separate from shopping edit). */
+  let editingInventoryId = null;
   let pendingProposals = [];
   let quickDraft = null;
   /** @type {null | { proposal: object, preview: object }} */
@@ -1007,12 +1010,12 @@ export function createApp(root) {
       <form class="manual-add" data-form="manual-add">
         <details ${must.length + nice.length + done.length === 0 ? 'open' : ''}>
           <summary>직접 입력</summary>
+          <p class="hint">분류(식재료·간식·생활용품)는 이름으로 자동 지정돼요. 틀리면 수정에서 바꾸세요.</p>
           <div class="form-grid">
-            <label>품목<input name="name" required maxlength="80" placeholder="휴지" /></label>
+            <label>품목<input name="name" required maxlength="80" placeholder="휴지, 과자…" /></label>
             <label>수량<input name="quantity" type="number" min="0.1" step="any" value="1" /></label>
             <label>단위<input name="unit" maxlength="12" value="개" /></label>
             <label>구분<select name="priority"><option value="must">필수</option><option value="nice">선택</option></select></label>
-            <label>분류<select name="category">${categoryOptionsHtml('food')}</select></label>
             <label>예상 가격(원)<input name="estimatedPrice" type="number" min="0" step="100" placeholder="선택" /></label>
           </div>
           <button type="submit" class="primary block">추가</button>
@@ -1069,10 +1072,11 @@ export function createApp(root) {
       return `<li class="shop-row edit"><form data-form="edit-item" data-id="${item.id}">
         <input name="name" value="${esc(item.name)}" required maxlength="80" />
         <div class="form-grid compact">
-          <input name="quantity" type="number" min="0.1" step="any" value="${item.quantity}" />
-          <input name="unit" value="${esc(item.unit)}" maxlength="12" />
-          <select name="priority"><option value="must" ${item.priority === 'must' ? 'selected' : ''}>필수</option><option value="nice" ${item.priority === 'nice' ? 'selected' : ''}>선택</option></select>
-          <input name="estimatedPrice" type="number" min="0" step="100" value="${item.estimatedPrice ?? ''}" placeholder="가격" />
+          <input name="quantity" type="number" min="0.1" step="any" value="${item.quantity}" aria-label="수량" />
+          <input name="unit" value="${esc(item.unit)}" maxlength="12" aria-label="단위" />
+          <select name="priority" aria-label="구분"><option value="must" ${item.priority === 'must' ? 'selected' : ''}>필수</option><option value="nice" ${item.priority === 'nice' ? 'selected' : ''}>선택</option></select>
+          <select name="category" aria-label="분류">${categoryOptionsHtml(item.category)}</select>
+          <input name="estimatedPrice" type="number" min="0" step="100" value="${item.estimatedPrice ?? ''}" placeholder="가격" aria-label="가격" />
         </div>
         <div class="row-actions">
           <button type="submit" class="primary">저장</button>
@@ -1101,13 +1105,13 @@ export function createApp(root) {
     return `
       <p class="lede">정확한 무게는 필요할 때만. 상태만으로도 장보기와 연결됩니다.</p>
       <form class="manual-add" data-form="add-inventory">
+        <p class="hint">분류는 이름으로 자동 지정돼요. 틀리면 수정(✎)에서 바꾸세요.</p>
         <div class="form-grid">
-          <label>이름<input name="name" required maxlength="80" placeholder="브로콜리, 휴지…" /></label>
+          <label>이름<input name="name" required maxlength="80" placeholder="브로콜리, 과자, 휴지…" /></label>
           <label>위치<select name="location">${LOCATIONS.map((l) => `<option value="${l.id}">${l.label}</option>`).join('')}</select></label>
           <label>상태<select name="status">${STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('')}</select></label>
           <label>수량(선택)<input name="quantity" type="number" min="0" step="any" /></label>
           <label>단위<input name="unit" maxlength="12" placeholder="개" /></label>
-          <label>분류<select name="category">${categoryOptionsHtml('food')}</select></label>
         </div>
         <button type="submit" class="primary block">재고 등록</button>
       </form>
@@ -1115,22 +1119,43 @@ export function createApp(root) {
         .map(
           (loc) => `<section class="panel"><h2>${loc.label}</h2>${
             loc.items.length
-              ? `<ul class="inv-list">${loc.items
-                  .map(
-                    (item) => `<li>
-                  <div><strong>${esc(item.name)}</strong><small>${item.quantity != null ? `${item.quantity}${esc(item.unit || '')} · ` : ''}${catLabel(item.category)}</small></div>
-                  <div class="status-chips">${STATUSES.map(
-                    (s) =>
-                      `<button type="button" class="${item.status === s.id ? 'on' : ''}" data-act="inv-status" data-id="${item.id}" data-status="${s.id}">${s.label}</button>`,
-                  ).join('')}</div>
-                  <button type="button" class="icon danger" data-act="inv-delete" data-id="${item.id}" aria-label="삭제">✕</button>
-                </li>`,
-                  )
-                  .join('')}</ul>`
+              ? `<ul class="inv-list">${loc.items.map((item) => inventoryRow(item)).join('')}</ul>`
               : '<p class="empty">비어 있어요.</p>'
           }</section>`,
         )
         .join('')}`;
+  }
+
+  function inventoryRow(item) {
+    if (editingInventoryId === item.id) {
+      return `<li class="inv-row edit">
+        <form data-form="edit-inventory" data-id="${item.id}">
+          <input name="name" value="${esc(item.name)}" required maxlength="80" aria-label="이름" />
+          <div class="form-grid compact">
+            <select name="location" aria-label="위치">${LOCATIONS.map((l) => `<option value="${l.id}" ${item.location === l.id ? 'selected' : ''}>${l.label}</option>`).join('')}</select>
+            <select name="status" aria-label="상태">${STATUSES.map((s) => `<option value="${s.id}" ${item.status === s.id ? 'selected' : ''}>${s.label}</option>`).join('')}</select>
+            <select name="category" aria-label="분류">${categoryOptionsHtml(item.category)}</select>
+            <input name="quantity" type="number" min="0" step="any" value="${item.quantity ?? ''}" placeholder="수량" aria-label="수량" />
+            <input name="unit" maxlength="12" value="${esc(item.unit || '')}" placeholder="단위" aria-label="단위" />
+          </div>
+          <div class="row-actions">
+            <button type="submit" class="primary">저장</button>
+            <button type="button" class="ghost" data-act="cancel-inv-edit">취소</button>
+          </div>
+        </form>
+      </li>`;
+    }
+    return `<li>
+      <div><strong>${esc(item.name)}</strong><small>${item.quantity != null ? `${item.quantity}${esc(item.unit || '')} · ` : ''}${catLabel(item.category)}</small></div>
+      <div class="status-chips">${STATUSES.map(
+        (s) =>
+          `<button type="button" class="${item.status === s.id ? 'on' : ''}" data-act="inv-status" data-id="${item.id}" data-status="${s.id}">${s.label}</button>`,
+      ).join('')}</div>
+      <div class="row-actions">
+        <button type="button" class="icon" data-act="inv-edit" data-id="${item.id}" aria-label="수정">✎</button>
+        <button type="button" class="icon danger" data-act="inv-delete" data-id="${item.id}" aria-label="삭제">✕</button>
+      </div>
+    </li>`;
   }
 
   function mealsView() {
@@ -1637,7 +1662,9 @@ export function createApp(root) {
       manual.onsubmit = (e) => {
         e.preventDefault();
         try {
-          commit((s) => addShoppingItem(ensureActiveList(s), Object.fromEntries(new FormData(manual))), '추가했어요.');
+          const fd = Object.fromEntries(new FormData(manual));
+          delete fd.category; // inferred from name
+          commit((s) => addShoppingItem(ensureActiveList(s), fd), '추가했어요.');
         } catch (err) {
           setToast(err.message);
         }
@@ -1663,6 +1690,7 @@ export function createApp(root) {
     root.querySelectorAll('[data-act=edit]').forEach((el) => {
       el.onclick = () => {
         editingId = el.dataset.id;
+        editingInventoryId = null;
         render();
       };
     });
@@ -1819,20 +1847,50 @@ export function createApp(root) {
       addInv.onsubmit = (e) => {
         e.preventDefault();
         try {
+          const fd = Object.fromEntries(new FormData(addInv));
+          delete fd.category; // inferred from name
           commit((s) => {
-            s.inventory.push(createInventoryItem(Object.fromEntries(new FormData(addInv))));
+            s.inventory.push(createInventoryItem(fd));
           }, '재고를 등록했어요.');
         } catch (err) {
           setToast(err.message);
         }
       };
     }
+    root.querySelectorAll('[data-act=inv-edit]').forEach((el) => {
+      el.onclick = () => {
+        editingInventoryId = el.dataset.id;
+        editingId = null;
+        render();
+      };
+    });
+    root.querySelectorAll('[data-act=cancel-inv-edit]').forEach((el) => {
+      el.onclick = () => {
+        editingInventoryId = null;
+        render();
+      };
+    });
+    root.querySelectorAll('[data-form=edit-inventory]').forEach((form) => {
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        try {
+          commit(
+            (s) => updateInventoryItem(s, form.dataset.id, Object.fromEntries(new FormData(form))),
+            '재고를 수정했어요.',
+          );
+          editingInventoryId = null;
+        } catch (err) {
+          setToast(err.message);
+        }
+      };
+    });
     root.querySelectorAll('[data-act=inv-status]').forEach((el) => {
       el.onclick = () => commit((s) => setInventoryStatus(s, el.dataset.id, el.dataset.status));
     });
     root.querySelectorAll('[data-act=inv-delete]').forEach((el) => {
       el.onclick = () => {
         if (!confirm('재고에서 삭제할까요?')) return;
+        if (editingInventoryId === el.dataset.id) editingInventoryId = null;
         commit((s) => removeInventory(s, el.dataset.id), '삭제했어요.');
       };
     });
