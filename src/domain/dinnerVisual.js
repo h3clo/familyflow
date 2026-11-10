@@ -3,6 +3,8 @@
  * Faster and less repetitive than one base photo + runtime texture overlay.
  */
 
+import { APP_BUILD_ID } from '../lib/buildId.js';
+
 const STEAM_RE = /야채찜|찜/;
 const ROAST_RE = /야채구이|구이/;
 
@@ -49,9 +51,16 @@ export function resolveDinnerVisual(state, dinnerLike = {}) {
     method: method || null,
     sauceName: sauceName || null,
     sauceShortName: sauceName ? shortSauceName(sauceName) : null,
-    imageSrc: file ? `${base}dinner/${file}` : null,
+    // Bust SW/CDN caches when a public/dinner/*.jpg asset is replaced in-place.
+    imageSrc: file ? `${base}dinner/${file}?v=${encodeURIComponent(assetVersion())}` : null,
     sauceTextureSrc: null,
   };
+}
+
+function assetVersion() {
+  const id = String(APP_BUILD_ID || '');
+  if (id && !id.includes('APP_BUILD_ID')) return id;
+  return 'dev';
 }
 
 export function shortSauceName(name) {
