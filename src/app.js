@@ -510,13 +510,11 @@ export function createApp(root) {
             <h1>${authGate ? '우리 집 시작하기' : viewTitle(view)}</h1>
           </div>
           <div class="top-meta">
-            <p class="household">${esc(state.household.name)}</p>
             ${authGate ? '' : settingsBtn()}
           </div>
         </header>`
         }
-        <main class="main">
-          ${pendingApproval ? approvalPanel(pendingApproval) : ''}
+        <main class="main" ${pendingApproval ? 'inert' : ''}>
           ${
             authGate
               ? authGateView()
@@ -533,7 +531,7 @@ export function createApp(root) {
         ${
           authGate
             ? ''
-            : `<nav class="tabbar" aria-label="주요 메뉴">
+            : `<nav class="tabbar" aria-label="주요 메뉴" ${pendingApproval ? 'inert' : ''}>
           <div class="tabbar-inner">
             ${tab('home', '홈', 'home')}
             ${tab('food', '식생활', 'food')}
@@ -541,17 +539,31 @@ export function createApp(root) {
           </div>
         </nav>`
         }
+        ${pendingApproval ? approvalPanel(pendingApproval) : ''}
       </div>`;
     bind();
+    if (pendingApproval) {
+      const sheet = root.querySelector('.approval-sheet');
+      const focusEl = sheet?.querySelector('.primary, .ghost, [data-act]');
+      requestAnimationFrame(() => focusEl?.focus?.());
+    }
   }
 
   function settingsBtn(opts = {}) {
     const onMedia = !!opts.onMedia;
     const on = state.settings.view === 'more';
+    // Sliders (not sun-ray gear) so it never reads as a theme toggle.
     return `<button type="button" class="settings-btn ${on ? 'on' : ''} ${onMedia ? 'on-media' : ''}" data-nav="more" aria-label="설정" title="설정">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M12 3.5v2.2M12 18.3v2.2M4.9 6.4l1.6 1.6M17.5 16l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.9 17.6l1.6-1.6M17.5 8l1.6-1.6"/>
+        <path d="M4 7h10"/>
+        <path d="M18 7h2"/>
+        <circle cx="16" cy="7" r="2.2"/>
+        <path d="M4 17h2"/>
+        <path d="M10 17h10"/>
+        <circle cx="8" cy="17" r="2.2"/>
+        <path d="M4 12h4"/>
+        <path d="M12 12h8"/>
+        <circle cx="10" cy="12" r="2.2"/>
       </svg>
     </button>`;
   }
@@ -887,7 +899,6 @@ export function createApp(root) {
         <div class="dinner-media-top">
           <p class="dinner-brand">Family Flow</p>
           <div class="dinner-media-meta">
-            <p class="dinner-house">${esc(state.household.name)}</p>
             ${settingsBtn({ onMedia: true })}
           </div>
         </div>
@@ -931,22 +942,24 @@ export function createApp(root) {
   }
 
   function approvalPanel({ proposal, preview }) {
-    return `<section class="panel approval" role="dialog" aria-label="변경 미리보기">
-      <h2>변경 미리보기</h2>
-      <p><strong>${esc(proposal.title)}</strong></p>
-      <p class="hint">${esc(proposal.reason)}</p>
-      ${
-        preview.ok
-          ? `<ul class="change-list">${preview.changes.map((c) => `<li>${esc(c.text)}</li>`).join('')}</ul>
-             <p class="hint">승인 전에는 데이터가 바뀌지 않아요.</p>
-             <div class="suggest-actions">
-               <button type="button" class="primary" data-act="confirm-proposal">승인하고 저장</button>
-               <button type="button" class="ghost" data-act="cancel-proposal">취소</button>
-             </div>`
-          : `<ul class="error-list">${preview.errors.map((e) => `<li>${esc(e.message)}</li>`).join('')}</ul>
-             <button type="button" class="ghost" data-act="cancel-proposal">닫기</button>`
-      }
-    </section>`;
+    return `<div class="approval-layer" role="presentation">
+      <section class="panel approval approval-sheet" role="dialog" aria-modal="true" aria-labelledby="approval-title" tabindex="-1">
+        <h2 id="approval-title">변경 미리보기</h2>
+        <p><strong>${esc(proposal.title)}</strong></p>
+        <p class="hint">${esc(proposal.reason)}</p>
+        ${
+          preview.ok
+            ? `<ul class="change-list">${preview.changes.map((c) => `<li>${esc(c.text)}</li>`).join('')}</ul>
+               <p class="hint">승인 전에는 데이터가 바뀌지 않아요.</p>
+               <div class="suggest-actions">
+                 <button type="button" class="primary" data-act="confirm-proposal">승인하고 저장</button>
+                 <button type="button" class="ghost" data-act="cancel-proposal">취소</button>
+               </div>`
+            : `<ul class="error-list">${preview.errors.map((e) => `<li>${esc(e.message)}</li>`).join('')}</ul>
+               <button type="button" class="ghost" data-act="cancel-proposal">닫기</button>`
+        }
+      </section>
+    </div>`;
   }
 
   function suggestCard(s) {
@@ -1204,8 +1217,12 @@ export function createApp(root) {
         <h2>우리 집</h2>
         <p class="hint">가족 이름표는 <strong>가족</strong> 탭에 두었어요. 여기는 집 설정·클라우드·AI만.</p>
         <form data-form="household">
-          <label>가정 이름<input name="name" value="${esc(state.household.name)}" maxlength="40" /></label>
           <label>기본 장보기 예산<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon}" /></label>
+          <p class="hint">집 이름은 기본값(우리 집)으로 두어요. 여러 집을 쓸 때만 아래에서 구분용으로 바꿉니다.</p>
+          <details class="hh-name-details">
+            <summary>집 이름 (선택)</summary>
+            <label class="hh-name-label">표시 이름<input name="name" value="${esc(state.household.name)}" maxlength="40" placeholder="우리 집" /></label>
+          </details>
           <button type="submit" class="primary">저장</button>
         </form>
       </section>
@@ -1270,8 +1287,7 @@ export function createApp(root) {
         <form data-form="cloud-auth" class="cloud-auth">
           <label>공용 이메일<input name="email" type="email" required autocomplete="username" /></label>
           <label>비밀번호<input name="password" type="password" required minlength="6" autocomplete="current-password" /></label>
-          <label>집 이름 (계정 만들 때)<input name="householdName" maxlength="80" placeholder="우리집" autocomplete="organization" /></label>
-          <p class="hint">「공용 계정 만들기」를 누르면 위 집 이름으로 가구가 바로 생깁니다. 로그인만 할 때는 비워도 됩니다.</p>
+          <p class="hint">「공용 계정 만들기」를 누르면 기본 집 이름(우리 집)으로 가구가 바로 생깁니다. 이름은 나중에 바꿔도 됩니다.</p>
           <div class="row-actions wrap">
             <button type="submit" class="primary" data-auth="signin" ${cloudUi.busy ? 'disabled' : ''}>로그인</button>
             <button type="submit" class="secondary" data-auth="signup" ${cloudUi.busy ? 'disabled' : ''}>공용 계정 만들기</button>
@@ -1300,9 +1316,9 @@ export function createApp(root) {
               )
               .join('')}</ul>`
           : `<form data-form="cloud-create-hh" class="cloud-auth">
-        <p class="hint">아직 집이 없어요. 이름만 정하면 이 공용 계정에 집이 생깁니다.</p>
-        <label>집 이름<input name="name" required maxlength="80" value="${esc(state.household.name)}" /></label>
-        <label>장보기 예산<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon ?? ''}" /></label>
+        <p class="hint">아직 집이 없어요. 만들면 기본 이름(우리 집)으로 연결됩니다.</p>
+        <label>장보기 예산 (선택)<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon ?? ''}" /></label>
+        <input type="hidden" name="name" value="우리 집" />
         <button type="submit" class="primary" ${cloudUi.busy ? 'disabled' : ''}>우리 집 만들기</button>
       </form>`
       }
@@ -1572,6 +1588,18 @@ export function createApp(root) {
         render();
       };
     });
+
+    const approvalLayer = root.querySelector('.approval-layer');
+    if (approvalLayer) {
+      approvalLayer.onclick = (e) => {
+        if (e.target === approvalLayer) {
+          pendingApproval = null;
+          render();
+        }
+      };
+      const sheet = approvalLayer.querySelector('.approval-sheet');
+      if (sheet) sheet.onclick = (e) => e.stopPropagation();
+    }
 
     root.querySelectorAll('[data-act=dismiss-suggestion]').forEach((btn) => {
       btn.onclick = () => {

@@ -9,12 +9,9 @@ export function needsCloudAuthGate({ configured, user, deferAuth }) {
   return !!(configured && !user && !deferAuth);
 }
 
-/** Signup form: household name is required; profile display defaults to 관리자. */
+/** Signup: household name is optional (defaults to 우리 집). Profile display stays 관리자. */
 export function parseSignupHouseholdName(raw) {
-  const name = String(raw || '').trim();
-  if (!name) {
-    return { ok: false, error: '집 이름을 입력해 주세요. 예: 우리집' };
-  }
+  const name = String(raw || '').trim() || '우리 집';
   if (name.length > 80) {
     return { ok: false, error: '집 이름은 80자 이내로 적어 주세요.' };
   }

@@ -20,6 +20,9 @@
   --font: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   --display: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Phone-first column: keep desktop from stretching into a billboard. */
+  --shell-max: 440px;
+  --hero-h: clamp(220px, 58vw, 280px);
   color: var(--ink);
   background:
     radial-gradient(820px 380px at 100% 0%, #dbe4f0 0%, transparent 55%),
@@ -54,7 +57,8 @@ button { cursor: pointer; }
 a { color: var(--brand); }
 
 .shell {
-  max-width: 720px;
+  width: 100%;
+  max-width: var(--shell-max);
   margin: 0 auto;
   min-height: 100%;
   min-height: 100dvh;
@@ -62,13 +66,8 @@ a { color: var(--brand); }
   /* Opacity-only: translateY entrance made iOS open slightly scrolled. */
   animation: rise 280ms var(--ease);
   overflow-x: clip;
-}
-@media (min-width: 900px) {
-  .shell {
-    max-width: 840px;
-    padding-left: 24px;
-    padding-right: 24px;
-  }
+  container-type: inline-size;
+  container-name: shell;
 }
 .main {
   display: grid;
@@ -83,6 +82,34 @@ a { color: var(--brand); }
 }
 .shell-immersive .dinner-stage {
   margin: 0 -16px 2px;
+}
+
+/* Desktop / wide laptop: tighter column + shorter hero so copy stays above the fold. */
+@media (min-width: 720px) {
+  :root {
+    --shell-max: 420px;
+    --hero-h: 200px;
+  }
+  .shell {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .shell-immersive {
+    padding-top: 16px;
+  }
+  .shell-immersive .dinner-stage {
+    margin: 0 0 2px;
+  }
+  .dinner-media {
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  .dinner-kicker {
+    font-size: 1.4rem;
+    bottom: 44px;
+  }
+  .main {
+    gap: 12px;
+  }
 }
 
 @keyframes rise {
@@ -162,6 +189,26 @@ a { color: var(--brand); }
   background: #fff;
   color: var(--ink);
   border-color: #fff;
+}
+.hh-name-details {
+  margin: 4px 0 10px;
+  border-radius: 12px;
+  border: 1px dashed var(--line);
+  padding: 8px 10px;
+  background: var(--card-soft);
+}
+.hh-name-details summary {
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--muted);
+  list-style: none;
+}
+.hh-name-details summary::-webkit-details-marker { display: none; }
+.hh-name-label {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
 }
 .sync-badge {
   font-size: 0.7rem;
@@ -286,9 +333,15 @@ a { color: var(--brand); }
 }
 .dinner-media {
   position: relative;
-  height: clamp(280px, 52vw, 340px);
+  height: var(--hero-h);
+  max-height: min(var(--hero-h), 42vh);
   background: #111 center/cover no-repeat;
   overflow: hidden;
+}
+@container shell (max-width: 360px) {
+  .dinner-media {
+    height: clamp(200px, 62cqw, 240px);
+  }
 }
 .dinner-media::after {
   content: '';
@@ -689,9 +742,6 @@ details summary { cursor: pointer; font-weight: 700; }
   display: grid;
   gap: 10px;
 }
-@media (min-width: 640px) {
-  .meal-cards { grid-template-columns: repeat(3, 1fr); }
-}
 .meal-card {
   background: linear-gradient(180deg, #fff, #f3f8f8);
   border: 1px solid var(--line);
@@ -839,7 +889,42 @@ details summary { cursor: pointer; font-weight: 700; }
   padding-inline: 8px;
   font-size: 0.88rem;
 }
-.approval { border-color: color-mix(in srgb, var(--brand) 45%, var(--line)); }
+.approval-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: end center;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: approval-fade 180ms var(--ease);
+}
+.approval-sheet {
+  width: min(100%, 420px);
+  max-height: min(78dvh, 640px);
+  overflow: auto;
+  margin: 0;
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line));
+  border-radius: 20px;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.28);
+  animation: approval-rise 220ms var(--ease);
+}
+@media (min-width: 720px) {
+  .approval-layer {
+    place-items: center;
+    padding: 24px;
+  }
+}
+@keyframes approval-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes approval-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .change-list, .error-list {
   margin: 10px 0;
   padding-left: 1.1rem;
@@ -1036,6 +1121,7 @@ form.cloud-auth {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .approval-layer, .approval-sheet { animation: none; }
   .shell, .toast, .primary, .secondary, .ghost, .food-seg, .tabbar .tab {
     animation: none;
     transition: none;
