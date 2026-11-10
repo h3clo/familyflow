@@ -1,12 +1,12 @@
 /**
- * Dinner hero visuals — curated pattern photos + sauce PNG overlays.
- * Only 야채찜 / 야채구이 pattern assets for now. No runtime AI image generation.
+ * Dinner hero visuals — pattern photos + sauce texture overlays
+ * (sauce looks poured onto the dish; not a text chip / bowl thumbnail).
  */
 
 const STEAM_RE = /야채찜|찜/;
 const ROAST_RE = /야채구이|구이/;
 
-/** Seed sauce name → static PNG under public/dinner/sauces/ */
+/** Seed sauce name → texture PNG under public/dinner/sauces/ */
 const SAUCE_ASSETS = [
   { match: /닭\s*양념|마늘간장설탕/, file: 'chicken-marinade.png' },
   { match: /마늘간장/, file: 'garlic-soy.png' },
@@ -38,12 +38,12 @@ export function resolveDinnerVisual(state, dinnerLike = {}) {
     patternName,
     method: method || null,
     imageSrc: asset ? `${base}dinner/${asset}` : null,
-    sauceLabel: sauceName ? `소스 · ${shortSauceName(sauceName)}` : null,
-    sauceImageSrc: sauceFile ? `${base}dinner/sauces/${sauceFile}` : null,
+    sauceName: sauceName || null,
+    sauceShortName: sauceName ? shortSauceName(sauceName) : null,
+    sauceTextureSrc: sauceFile ? `${base}dinner/sauces/${sauceFile}` : null,
   };
 }
 
-/** Keep fallback text chips short so they don't collide with the headline. */
 export function shortSauceName(name) {
   const raw = String(name || '').trim();
   const cut = raw.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
