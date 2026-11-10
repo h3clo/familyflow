@@ -452,7 +452,7 @@ export function createApp(root) {
         <ul class="chip-list">${(state.members || [])
           .map(
             (m) =>
-              `<li class="member-chip">${esc(m.displayName)} · ${esc(m.roleLabel || m.role || '구성원')} <button type="button" class="ghost" data-act="remove-member" data-id="${esc(m.id)}" aria-label="삭제">×</button></li>`,
+              `<li class="member-chip"><span class="member-chip-text">${esc(m.displayName)} · ${esc(m.roleLabel || m.role || '구성원')}</span><button type="button" class="ghost member-chip-x" data-act="remove-member" data-id="${esc(m.id)}" aria-label="삭제">×</button></li>`,
           )
           .join('')}</ul>
         <form data-form="add-member" class="cloud-auth">
@@ -652,11 +652,6 @@ export function createApp(root) {
             ? `<ul class="dinner-reasons">${reasons
                 .map((r, i) => `<li><i aria-hidden="true">${i + 1}</i><span>${esc(r)}</span></li>`)
                 .join('')}</ul>`
-            : ''
-        }
-        ${
-          unknowns?.length
-            ? `<p class="hint">${unknowns.map((u) => esc(u)).join(' · ')}</p>`
             : ''
         }
         ${actions || ''}

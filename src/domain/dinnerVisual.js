@@ -26,8 +26,16 @@ export function resolveDinnerVisual(state, dinnerLike = {}) {
     patternName,
     method: method || null,
     imageSrc: asset ? `${base}dinner/${asset}` : null,
-    sauceLabel: dinnerLike.sauceName ? `소스 · ${dinnerLike.sauceName}` : null,
+    sauceLabel: dinnerLike.sauceName ? `소스 · ${shortSauceName(dinnerLike.sauceName)}` : null,
   };
+}
+
+/** Keep overlay chips short so they don't collide with the headline. */
+function shortSauceName(name) {
+  const raw = String(name || '').trim();
+  const cut = raw.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  if (cut.length <= 14) return cut;
+  return `${cut.slice(0, 13)}…`;
 }
 
 function patternAsset(patternName, method) {

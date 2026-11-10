@@ -19,13 +19,13 @@ test('maps 야채찜 to steam asset and sauce overlay label', () => {
   assert.equal(v.sauceLabel, '소스 · 마늘간장 소스');
 });
 
-test('maps 야채구이 to roast asset', () => {
+test('maps 야채구이 to roast asset and shortens long sauce chips', () => {
   const v = resolveDinnerVisual(state, {
     patternName: '야채구이',
     sauceName: '닭 양념 (마늘간장설탕)',
   });
   assert.match(v.imageSrc, /dinner\/roast\.jpg$/);
-  assert.equal(v.sauceLabel, '소스 · 닭 양념 (마늘간장설탕)');
+  assert.equal(v.sauceLabel, '소스 · 닭 양념');
 });
 
 test('returns no image for unknown patterns', () => {
