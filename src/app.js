@@ -557,9 +557,9 @@ export function createApp(root) {
     const onMedia = !!opts.onMedia;
     const on = state.settings.view === 'more';
     return `<button type="button" class="settings-btn ${on ? 'on' : ''} ${onMedia ? 'on-media' : ''}" data-nav="more" aria-label="설정" title="설정">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg class="settings-ico" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V19a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H5a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H10a1.7 1.7 0 0 0 1-1.5V5a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V10c.5.3 1.1.6 1.5 1H19a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
       </svg>
     </button>`;
   }
@@ -761,27 +761,39 @@ export function createApp(root) {
       </section>`;
   }
 
-  /** Avoid stacking the same protein under a title that already names it. */
-  function dinnerSupportLine(dinner) {
-    const title = String(dinner?.title || '');
-    const protein = String(dinner?.protein || '').trim();
-    const sauce = String(dinner?.sauceName || '').trim();
-    if (sauce) return `소스 · ${sauce}`;
-    const base = protein && !title.includes(protein) ? protein : '재료 확인됨';
-    return `${base} · 소스 자유`;
+  /** Stock / sauce / protein chips under the dinner title. */
+  function dinnerMetaChips({ stockLabel, sauceName, protein } = {}) {
+    const chips = [];
+    if (stockLabel) chips.push({ text: stockLabel, kind: 'stock' });
+    const sauce = String(sauceName || '').trim();
+    // Always show full sauce name as text (title uses a shortened label).
+    if (sauce) chips.push({ text: `소스 · ${sauce}`, kind: 'sauce' });
+    if (protein) chips.push({ text: `곁들임 · ${protein}`, kind: 'protein' });
+    if (!chips.length) return '';
+    return `<div class="dinner-meta-chips" role="list">${chips
+      .map(
+        (c) =>
+          `<p class="dinner-meta-chip dinner-meta-chip-${c.kind}" role="listitem">${esc(c.text)}</p>`,
+      )
+      .join('')}</div>`;
   }
 
   function dinnerHomeBlock(dinnerHome, { immersive = false } = {}) {
     if (dinnerHome.status === 'confirmed') {
       const dinner = dinnerHome.dinner;
       const visual = resolveDinnerVisual(state, dinner);
+      const meta = dinnerMetaChips({
+        sauceName: dinner.sauceName,
+        protein: dinner.protein,
+      });
       if (immersive && visual.imageSrc) {
         return dinnerStage({
           visual,
           badgeLabel: '확정',
-          kicker: '오늘 저녁',
+          label: '오늘 저녁 · 확정',
           title: dinner.title,
-          support: dinnerSupportLine(dinner),
+          meta,
+          support: '',
           actions: '',
         });
       }
@@ -789,7 +801,7 @@ export function createApp(root) {
         <div class="dinner-hero-body">
           <p class="label">오늘 저녁 · 확정</p>
           <h2>${esc(dinner.title)}</h2>
-          <p class="hint">${esc(dinnerSupportLine(dinner))}</p>
+          ${meta}
         </div>
       </section>`;
     }
@@ -807,9 +819,15 @@ export function createApp(root) {
 
     const offer = dinnerHome.offer;
     const visual = resolveDinnerVisual(state, offer);
-    const stockChip = offer.stockLabel
-      ? `<p class="dinner-stock-chip" role="status">${esc(offer.stockLabel)}</p>`
-      : '';
+    const meta = dinnerMetaChips({
+      stockLabel: offer.stockLabel,
+      sauceName: offer.sauceName,
+      protein: offer.protein,
+    });
+    const support =
+      offer.stockStatus === 'untracked'
+        ? '사진은 야채 패턴·소스예요. 곁들임 재고는 추측하지 않아요.'
+        : '확인된 재고·식단 신호를 섞어 골랐어요.';
     const actions = `<div class="dinner-actions">
       <button type="button" class="primary block" data-act="dinner-accept">이대로</button>
       <button type="button" class="dinner-swap" data-act="dinner-swap" ${offer.hasAlt ? '' : 'disabled'}>다른 후보로 바꾸기</button>
@@ -827,13 +845,10 @@ export function createApp(root) {
       return dinnerStage({
         visual,
         badgeLabel: '저장 전',
-        kicker: '오늘 저녁\n이걸로 할까요',
+        label: '오늘 저녁 추천',
         title: offer.title,
-        support:
-          offer.stockStatus === 'untracked'
-            ? '재고를 추측하지 않아요. 가정 제안만 보여 드려요.'
-            : '확인된 재고·식단 신호를 섞어 골랐어요.',
-        stockChip,
+        meta,
+        support,
         actions,
       });
     }
@@ -842,12 +857,8 @@ export function createApp(root) {
       <div class="dinner-hero-body">
         <p class="label">오늘 저녁 추천 · 저장 전</p>
         <h2>${esc(offer.title)}</h2>
-        ${stockChip}
-        <p class="hint">${
-          offer.stockStatus === 'untracked'
-            ? '재고를 추측하지 않아요. 가정 제안만 보여 드려요.'
-            : '확인된 재고·식단 신호를 섞어 골랐어요.'
-        }</p>
+        ${meta}
+        <p class="hint">${esc(support)}</p>
         ${actions}
       </div>
     </section>`;
@@ -884,7 +895,15 @@ export function createApp(root) {
     </form>`;
   }
 
-  function dinnerStage({ visual, badgeLabel, kicker, title, support, stockChip = '', actions }) {
+  function dinnerStage({
+    visual,
+    badgeLabel,
+    label = '오늘 저녁 추천',
+    title,
+    meta = '',
+    support = '',
+    actions,
+  }) {
     const mediaLabel = [visual.patternName, visual.sauceShortName ? `소스 ${visual.sauceShortName}` : '']
       .filter(Boolean)
       .join(' · ');
@@ -898,13 +917,12 @@ export function createApp(root) {
             ${settingsBtn({ onMedia: true })}
           </div>
         </div>
-        <h1 class="dinner-kicker">${esc(kicker)}</h1>
         <span class="dinner-media-badge">${esc(badgeLabel)}</span>
       </div>
       <div class="dinner-hero-body">
-        <p class="label">오늘 저녁 추천</p>
+        <p class="label">${esc(label)}</p>
         <h2>${esc(title)}</h2>
-        ${stockChip || ''}
+        ${meta || ''}
         ${support ? `<p class="hint">${esc(support)}</p>` : ''}
         ${actions || ''}
       </div>

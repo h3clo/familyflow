@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDinnerHomeOffer, listDinnerCandidates } from '../src/domain/dinnerHome.js';
+import {
+  buildDinnerHomeOffer,
+  formatDinnerOfferTitle,
+  listDinnerCandidates,
+} from '../src/domain/dinnerHome.js';
 import { previewProposal, applyProposal } from '../src/domain/proposals.js';
 
 function baseState(inventory = []) {
@@ -57,12 +61,31 @@ test('offers dinner from enough protein with 이대로 proposal', () => {
   ]);
   const offer = buildDinnerHomeOffer(state, { altIndex: 0 });
   assert.equal(offer.status, 'offer');
-  assert.ok(offer.offer.title.includes('고등어') || offer.offer.protein === '고등어' || offer.offer.protein === '닭고기');
+  assert.ok(offer.offer.protein === '고등어' || offer.offer.protein === '닭고기');
+  // Title is pattern×sauce (matches hero photo); protein stays a pairing field.
+  assert.ok(!offer.offer.title.includes(offer.offer.protein));
+  assert.ok(offer.offer.sauceName);
+  assert.ok(offer.offer.title.includes('야채'));
   assert.ok(offer.offer.reasons.some((r) => /재고/.test(r)));
   assert.equal(offer.offer.proposal.ops[0].op, 'meals.confirm_dinner');
   const preview = previewProposal(state, offer.offer.proposal);
   assert.equal(preview.ok, true);
   assert.equal(state.todayDinner, null);
+});
+
+test('formatDinnerOfferTitle puts sauce in title, not protein', () => {
+  assert.equal(
+    formatDinnerOfferTitle({
+      patternName: '야채구이',
+      sauceName: '간장마늘 양념',
+      protein: '고등어',
+    }),
+    '야채구이 · 간장마늘',
+  );
+  assert.equal(
+    formatDinnerOfferTitle({ patternName: '야채찜', sauceName: '부추장', protein: '닭고기' }),
+    '야채찜 · 부추장',
+  );
 });
 
 test('바꾸기 cycles to another candidate', () => {
