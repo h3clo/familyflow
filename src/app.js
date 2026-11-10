@@ -476,7 +476,9 @@ export function createApp(root) {
             ${pack.setup.steps
               .map(
                 (s) => `<li>
-                <button type="button" class="primary block" data-nav="${s.view}" ${s.segment ? `data-segment="${s.segment}"` : ''}>${esc(s.label)}</button>
+                <button type="button" class="setup-go" data-nav="${s.view}" ${s.segment ? `data-segment="${s.segment}"` : ''}>
+                  <span>${esc(s.label)}</span><span aria-hidden="true">→</span>
+                </button>
                 <small>${esc(s.hint)}</small>
               </li>`,
               )
@@ -531,8 +533,8 @@ export function createApp(root) {
         <p class="label">오늘 저녁 추천</p>
         <h2>추천할 저녁이 부족해요</h2>
         <p class="hint">${esc(dinnerHome.emptyReason)}</p>
-        <div class="suggest-actions">
-          <button type="button" class="secondary" data-nav="food" data-segment="inventory">재고 확인하기</button>
+        <div class="dinner-empty-actions">
+          <button type="button" class="secondary block" data-nav="food" data-segment="inventory">재고 확인하기</button>
         </div>
       </section>`;
     }
