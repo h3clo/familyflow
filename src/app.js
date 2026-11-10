@@ -510,7 +510,6 @@ export function createApp(root) {
             <h1>${authGate ? '우리 집 시작하기' : viewTitle(view)}</h1>
           </div>
           <div class="top-meta">
-            <p class="household">${esc(state.household.name)}</p>
             ${authGate ? '' : settingsBtn()}
           </div>
         </header>`
@@ -548,11 +547,16 @@ export function createApp(root) {
   function settingsBtn(opts = {}) {
     const onMedia = !!opts.onMedia;
     const on = state.settings.view === 'more';
-    return `<button type="button" class="settings-btn ${on ? 'on' : ''} ${onMedia ? 'on-media' : ''}" data-nav="more" aria-label="설정" title="설정">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M12 3.5v2.2M12 18.3v2.2M4.9 6.4l1.6 1.6M17.5 16l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.9 17.6l1.6-1.6M17.5 8l1.6-1.6"/>
-      </svg>
+    return `<button type="button" class="settings-btn ${on ? 'on' : ''} ${onMedia ? 'on-media' : ''}" data-nav="more" aria-label="설정" title="설정" aria-pressed="${on ? 'true' : 'false'}">
+      <span class="settings-toggle" aria-hidden="true">
+        <span class="settings-toggle-sun">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.2M12 18.8V21M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M3 12h2.2M18.8 12H21M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>
+        </span>
+        <span class="settings-toggle-moon">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M19.5 14.2A7.6 7.6 0 0 1 9.8 4.5 7.8 7.8 0 1 0 19.5 14.2Z"/></svg>
+        </span>
+        <span class="settings-toggle-knob"></span>
+      </span>
     </button>`;
   }
 
@@ -887,7 +891,6 @@ export function createApp(root) {
         <div class="dinner-media-top">
           <p class="dinner-brand">Family Flow</p>
           <div class="dinner-media-meta">
-            <p class="dinner-house">${esc(state.household.name)}</p>
             ${settingsBtn({ onMedia: true })}
           </div>
         </div>
@@ -1204,8 +1207,12 @@ export function createApp(root) {
         <h2>우리 집</h2>
         <p class="hint">가족 이름표는 <strong>가족</strong> 탭에 두었어요. 여기는 집 설정·클라우드·AI만.</p>
         <form data-form="household">
-          <label>가정 이름<input name="name" value="${esc(state.household.name)}" maxlength="40" /></label>
           <label>기본 장보기 예산<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon}" /></label>
+          <p class="hint">집 이름은 기본값(우리 집)으로 두어요. 여러 집을 쓸 때만 아래에서 구분용으로 바꿉니다.</p>
+          <details class="hh-name-details">
+            <summary>집 이름 (선택)</summary>
+            <label class="hh-name-label">표시 이름<input name="name" value="${esc(state.household.name)}" maxlength="40" placeholder="우리 집" /></label>
+          </details>
           <button type="submit" class="primary">저장</button>
         </form>
       </section>
@@ -1270,8 +1277,7 @@ export function createApp(root) {
         <form data-form="cloud-auth" class="cloud-auth">
           <label>공용 이메일<input name="email" type="email" required autocomplete="username" /></label>
           <label>비밀번호<input name="password" type="password" required minlength="6" autocomplete="current-password" /></label>
-          <label>집 이름 (계정 만들 때)<input name="householdName" maxlength="80" placeholder="우리집" autocomplete="organization" /></label>
-          <p class="hint">「공용 계정 만들기」를 누르면 위 집 이름으로 가구가 바로 생깁니다. 로그인만 할 때는 비워도 됩니다.</p>
+          <p class="hint">「공용 계정 만들기」를 누르면 기본 집 이름(우리 집)으로 가구가 바로 생깁니다. 이름은 나중에 바꿔도 됩니다.</p>
           <div class="row-actions wrap">
             <button type="submit" class="primary" data-auth="signin" ${cloudUi.busy ? 'disabled' : ''}>로그인</button>
             <button type="submit" class="secondary" data-auth="signup" ${cloudUi.busy ? 'disabled' : ''}>공용 계정 만들기</button>
@@ -1300,9 +1306,9 @@ export function createApp(root) {
               )
               .join('')}</ul>`
           : `<form data-form="cloud-create-hh" class="cloud-auth">
-        <p class="hint">아직 집이 없어요. 이름만 정하면 이 공용 계정에 집이 생깁니다.</p>
-        <label>집 이름<input name="name" required maxlength="80" value="${esc(state.household.name)}" /></label>
-        <label>장보기 예산<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon ?? ''}" /></label>
+        <p class="hint">아직 집이 없어요. 만들면 기본 이름(우리 집)으로 연결됩니다.</p>
+        <label>장보기 예산 (선택)<input name="budgetWon" type="number" min="0" step="1000" value="${state.household.budgetWon ?? ''}" /></label>
+        <input type="hidden" name="name" value="우리 집" />
         <button type="submit" class="primary" ${cloudUi.busy ? 'disabled' : ''}>우리 집 만들기</button>
       </form>`
       }

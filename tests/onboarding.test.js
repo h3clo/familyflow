@@ -74,11 +74,12 @@ test('buildSyncableFootprint ignores default owner-only seed member', () => {
   assert.equal(fp.catalogCustomized, false);
 });
 
-test('signup household name is required and trimmed', () => {
-  assert.equal(parseSignupHouseholdName('').ok, false);
-  assert.equal(parseSignupHouseholdName('   ').ok, false);
+test('signup household name defaults when blank and trims custom names', () => {
+  assert.equal(parseSignupHouseholdName('').householdName, '우리 집');
+  assert.equal(parseSignupHouseholdName('   ').householdName, '우리 집');
   const ok = parseSignupHouseholdName('  우리집  ');
   assert.equal(ok.ok, true);
   assert.equal(ok.householdName, '우리집');
   assert.equal(ok.profileDisplayName, '관리자');
+  assert.equal(parseSignupHouseholdName('x'.repeat(81)).ok, false);
 });
