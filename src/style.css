@@ -45,9 +45,12 @@ a { color: var(--brand); }
   max-width: 720px;
   margin: 0 auto;
   min-height: 100dvh;
-  padding: 16px 16px calc(110px + env(safe-area-inset-bottom));
+  padding: 16px 16px calc(128px + env(safe-area-inset-bottom));
   animation: rise 320ms var(--ease);
   overflow-x: clip;
+}
+html {
+  scroll-padding-bottom: calc(128px + env(safe-area-inset-bottom));
 }
 @media (min-width: 900px) {
   .shell {
@@ -969,7 +972,7 @@ form.cloud-auth {
   min-height: 52px;
   min-width: 0;
   padding: 6px 4px 5px;
-  border-radius: 16px;
+  border-radius: 999px;
   color: #64748b;
   display: flex;
   flex-direction: column;
