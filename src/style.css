@@ -124,6 +124,31 @@ a { color: var(--brand); }
 .panel.muted { box-shadow: none; background: color-mix(in srgb, var(--card) 70%, var(--bg)); }
 .panel h2 { margin: 0 0 10px; font-size: 1rem; }
 
+.dinner-hero h2 {
+  margin: 6px 0 10px;
+  font-family: var(--display);
+  font-size: clamp(1.35rem, 4vw, 1.7rem);
+}
+.dinner-reasons {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+.dinner-reasons li { margin: 0.2rem 0; }
+.dinner-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.dinner-actions .primary,
+.dinner-actions .secondary {
+  flex: 1;
+  min-height: 48px;
+  font-weight: 700;
+}
+.dinner-empty .suggest-actions { margin-top: 12px; }
+
 .quick-add textarea {
   width: 100%;
   border: 1px solid var(--line);
