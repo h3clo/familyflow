@@ -31,6 +31,7 @@ import {
 } from './domain/suggestions.js';
 import { ProposalError } from './domain/proposals.js';
 import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
+import { buildDinnerHomeOffer } from './domain/dinnerHome.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
 import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
 import { runConversationTurn } from './ai/conversation.js';
@@ -80,6 +81,8 @@ export function createApp(root) {
   let quickDraft = null;
   /** @type {null | { proposal: object, preview: object }} */
   let pendingApproval = null;
+  /** Cycle index for home dinner 「바꾸기」 alternatives (session only). */
+  let dinnerAltIndex = 0;
   /** @type {{ role: 'user'|'assistant', text: string, kind?: string, engine?: string }[]} */
   let chatLog = [];
   let chatBusy = false;
@@ -385,7 +388,7 @@ export function createApp(root) {
     const list = ensureActiveList(state);
     const openCount = list.items.filter((i) => !i.checked).length;
     const lowCount = state.inventory.filter((i) => i.status === 'out' || i.status === 'low').length;
-    const dinner = state.todayDinner;
+    const dinnerHome = buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex });
 
     if (pack.mode === 'setup') {
       return `
@@ -404,25 +407,17 @@ export function createApp(root) {
               .join('')}
           </ul>
         </section>
+        ${dinnerHomeBlock(dinnerHome)}
         ${chatPanel()}`;
     }
 
     return `
+      ${dinnerHomeBlock(dinnerHome)}
       <section class="status-strip" aria-label="요약">
         <div><p class="label">살 것</p><p class="budget-value">${openCount}</p></div>
         <div><p class="label">재고 주의</p><p class="budget-value">${lowCount}</p></div>
-        <div><p class="label">오늘 저녁</p><p class="budget-value">${dinner ? '확정' : '미정'}</p></div>
+        <div><p class="label">오늘 저녁</p><p class="budget-value">${dinnerHome.status === 'confirmed' ? '확정' : dinnerHome.status === 'offer' ? '제안' : '미정'}</p></div>
       </section>
-      ${
-        dinner
-          ? `<section class="panel dinner-confirmed">
-            <h2>오늘 저녁</h2>
-            <p><strong>${esc(dinner.title)}</strong></p>
-            <small>${dinner.protein ? esc(dinner.protein) + ' · ' : ''}${dinner.sauceName ? '소스 ' + esc(dinner.sauceName) : '소스 자유'}</small>
-          </section>`
-          : ''
-      }
-      ${chatPanel()}
       <section class="panel">
         <h2>지금 챙길 일</h2>
         ${
@@ -431,6 +426,7 @@ export function createApp(root) {
             : `<p class="empty">지금은 급한 제안이 없어요. 장보기·재고는 아래에서 바로 갈 수 있어요.</p>`
         }
       </section>
+      ${chatPanel()}
       <section class="panel muted">
         <h2>도구</h2>
         <div class="tool-grid">
@@ -440,6 +436,49 @@ export function createApp(root) {
         </div>
         <p class="hint">변경은 미리보기 후 승인해야 저장돼요. AI 없이도 규칙으로 동작해요.</p>
       </section>`;
+  }
+
+  function dinnerHomeBlock(dinnerHome) {
+    if (dinnerHome.status === 'confirmed') {
+      const dinner = dinnerHome.dinner;
+      return `<section class="panel dinner-hero" aria-label="오늘 저녁">
+        <p class="label">오늘 저녁 · 확정</p>
+        <h2>${esc(dinner.title)}</h2>
+        <p class="hint">${dinner.protein ? esc(dinner.protein) + ' · ' : ''}${
+          dinner.sauceName ? '소스 ' + esc(dinner.sauceName) : '소스 자유'
+        }</p>
+      </section>`;
+    }
+
+    if (dinnerHome.status === 'empty') {
+      return `<section class="panel dinner-hero dinner-empty" aria-label="오늘 저녁 추천">
+        <p class="label">오늘 저녁 추천</p>
+        <h2>추천할 저녁이 부족해요</h2>
+        <p class="hint">${esc(dinnerHome.emptyReason)}</p>
+        <div class="suggest-actions">
+          <button type="button" class="secondary" data-nav="inventory">재고 확인하기</button>
+        </div>
+      </section>`;
+    }
+
+    const offer = dinnerHome.offer;
+    return `<section class="panel dinner-hero" aria-label="오늘 저녁 추천">
+      <p class="label">오늘 저녁 추천 · 저장 전</p>
+      <h2>${esc(offer.title)}</h2>
+      <ul class="dinner-reasons">
+        ${offer.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}
+      </ul>
+      ${
+        offer.unknowns?.length
+          ? `<p class="hint">${offer.unknowns.map((u) => esc(u)).join(' · ')}</p>`
+          : ''
+      }
+      <div class="suggest-actions dinner-actions">
+        <button type="button" class="primary" data-act="dinner-accept">이대로</button>
+        <button type="button" class="secondary" data-act="dinner-swap" ${offer.hasAlt ? '' : 'disabled'}>바꾸기</button>
+      </div>
+      <p class="hint">이대로는 미리보기로 열리고, 승인한 뒤에만 저장돼요.</p>
+    </section>`;
   }
 
   function chatPanel() {
@@ -969,6 +1008,40 @@ export function createApp(root) {
       };
     }
 
+    root.querySelectorAll('[data-act=dinner-accept]').forEach((btn) => {
+      btn.onclick = () => {
+        const dinnerHome = buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex });
+        const proposal = dinnerHome.offer?.proposal;
+        if (!proposal) {
+          setToast('지금은 확정할 저녁 제안이 없어요.');
+          return;
+        }
+        try {
+          const preview = previewProposal(state, proposal);
+          pendingApproval = { proposal, preview };
+          render();
+          if (!preview.ok) setToast(preview.errors[0]?.message || '이 제안은 적용할 수 없어요.');
+        } catch (err) {
+          pendingApproval = null;
+          setToast(err.message || '미리보기에 실패했어요.');
+        }
+      };
+    });
+
+    root.querySelectorAll('[data-act=dinner-swap]').forEach((btn) => {
+      btn.onclick = () => {
+        const dinnerHome = buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex });
+        if (!dinnerHome.offer?.hasAlt) {
+          setToast('다른 후보가 더 없어요. 재고를 추가해 주세요.');
+          return;
+        }
+        dinnerAltIndex = dinnerHome.offer.nextAltIndex;
+        pendingApproval = null;
+        render();
+        setToast('다른 저녁 후보로 바꿨어요. 이대로로 미리보세요.');
+      };
+    });
+
     root.querySelectorAll('[data-act=preview-suggestion]').forEach((btn) => {
       btn.onclick = () => {
         const pack = generateSuggestions(state);
@@ -1004,6 +1077,9 @@ export function createApp(root) {
             if (navigate) s.settings.view = navigate === 'home' ? 'home' : navigate;
           });
           pendingApproval = null;
+          if (proposal?.ops?.some((op) => op.op === 'meals.confirm_dinner')) {
+            dinnerAltIndex = 0;
+          }
           setToast(msg);
         } catch (err) {
           const message = err instanceof ProposalError || err?.message ? err.message : '저장에 실패했어요.';
