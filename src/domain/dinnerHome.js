@@ -1,14 +1,21 @@
 /**
- * Home dinner recommendation.
- * Prefer confirmed protein stock; if none yet, fall back to starter pattern×protein
- * suggestions (does not invent inventory rows). Changes go through ActionProposal only.
+ * Home dinner recommendation (ranking v2).
+ * Prefer confirmed protein stock; if none, starter pattern×protein (untracked).
+ * Never invents inventory rows. Changes go through ActionProposal only.
  */
 import { createProposal } from './proposals.js';
+import {
+  parseFamilyPreferenceNotes,
+  scoreDinnerCandidate,
+  compareDinnerScores,
+} from './dinnerRank.js';
 
 const PROTEIN_RE = /닭|돼지|소고기|두부|고기|고등어|삼치|연어|계란|달걀/;
 
 /** Early-home defaults when the household has not registered protein stock yet. */
 export const STARTER_PROTEINS = ['닭고기', '고등어', '돼지고기', '두부'];
+
+export const UNTRACKED_STOCK_LABEL = '재고 미확인 · 가정 제안';
 
 /**
  * @param {object} state
@@ -81,6 +88,31 @@ export function buildDinnerHomeOffer(state, opts = {}) {
     ops,
   });
 
+  const stockRegisterProposal =
+    pick.stockStatus === 'untracked' && pick.protein
+      ? createProposal({
+          source: 'rules',
+          key: `home-dinner-stock-${pick.key}`,
+          priority: 40,
+          title: `재고로 등록: ${pick.protein}`,
+          reason: `${UNTRACKED_STOCK_LABEL}. 승인하면 ‘충분함’으로 재고에만 남겨요. 저녁 확정과는 별개예요.`,
+          actionLabel: '재고 등록 미리보기',
+          ops: [
+            {
+              op: 'inventory.upsert',
+              payload: {
+                name: pick.protein,
+                status: 'enough',
+                location: guessLocation(pick.protein),
+                category: 'food',
+                quantity: 1,
+                unit: guessUnit(pick.protein),
+              },
+            },
+          ],
+        })
+      : null;
+
   return {
     status: 'offer',
     dinner: null,
@@ -90,17 +122,20 @@ export function buildDinnerHomeOffer(state, opts = {}) {
       nextAltIndex: hasAlt ? nextIndex : altIndex,
       hasAlt,
       proposal,
+      stockRegisterProposal,
+      stockLabel: pick.stockStatus === 'untracked' ? UNTRACKED_STOCK_LABEL : null,
     },
     emptyReason: null,
   };
 }
 
-/** Deterministic candidates from confirmed proteins, else starter proteins. */
+/** Deterministic candidates with blended ranking (not absolute stock-first). */
 export function listDinnerCandidates(state) {
   const inventory = state.inventory || [];
   const patterns = state.cookingPatterns || [];
   const sauces = state.sauces || [];
   const recentProteins = recentProteinHints(state);
+  const prefs = parseFamilyPreferenceNotes(state.members);
 
   const dinnerPatterns = patterns.filter((p) => p.method === 'steam' || p.method === 'roast');
   const usePatterns = dinnerPatterns.length
@@ -113,7 +148,7 @@ export function listDinnerCandidates(state) {
     .filter((i) => PROTEIN_RE.test(i.name))
     .filter((i) => i.status === 'enough' || i.status === 'low' || i.status === 'out')
     .slice()
-    .sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.name.localeCompare(b.name, 'ko'));
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 
   const proteinSources = confirmed.length
     ? confirmed.map((item) => ({
@@ -141,24 +176,25 @@ export function listDinnerCandidates(state) {
       const sauce =
         pickPreferredSauce(saucePool, source.name) || (!saucePool.length ? sauces[0] : null) || null;
 
+      const recent = recentProteins.has(normalize(source.name));
+      const effort = pattern?.effort || null;
       const reasons = [];
       const unknowns = [];
-      if (source.stockStatus === 'enough') reasons.push(`재고: ${source.name} 충분`);
-      if (source.stockStatus === 'low') reasons.push(`재고: ${source.name} 부족(확인됨)`);
-      if (source.stockStatus === 'out') reasons.push(`재고: ${source.name} 없음(확인됨)`);
+
+      if (source.stockStatus === 'enough') reasons.push(`재고 확인 · ${source.name} 충분`);
+      if (source.stockStatus === 'low') reasons.push(`재고 확인 · ${source.name} 부족`);
+      if (source.stockStatus === 'out') reasons.push(`재고 확인 · ${source.name} 없음`);
       if (source.stockStatus === 'untracked') {
-        reasons.push('재고 등록 전 · 자주 쓰는 패턴으로 먼저 제안');
+        reasons.push(UNTRACKED_STOCK_LABEL);
         unknowns.push(`${source.name} 재고는 아직 확인하지 않음`);
       }
 
-      const effort = pattern?.effort === 'low' ? '낮음' : pattern?.effort === 'medium' ? '보통' : null;
-      if (effort) reasons.push(`조리 부담: ${effort}(${pattern.name})`);
+      if (effort === 'low') reasons.push('조리 부담 낮음');
+      else if (effort === 'medium') reasons.push('조리 부담 보통');
+      else if (effort === 'high') reasons.push('조리 부담 높음');
 
-      if (recentProteins.has(normalize(source.name))) {
-        reasons.push('최근 같은 재료를 썼어요 · 다른 후보도 볼 수 있어요');
-      } else if (recentProteins.size && source.tracked) {
-        reasons.push('최근 식단에 이 재료는 안 보임(확인된 범위)');
-      }
+      if (recent) reasons.push('최근 같은 재료 · 다른 후보도 볼 수 있어요');
+      else if (recentProteins.size) reasons.push('최근 식단에 안 나온 재료');
 
       let shopping = null;
       if (source.stockStatus === 'out' || source.stockStatus === 'low') {
@@ -170,17 +206,32 @@ export function listDinnerCandidates(state) {
         };
         reasons.push(
           source.stockStatus === 'out'
-            ? `장보기 제안: ${source.name} (재고 없음)`
-            : `장보기 제안: ${source.name} (재고 부족)`,
+            ? `장보기 제안 · ${source.name} (없음)`
+            : `장보기 제안 · ${source.name} (부족)`,
         );
       }
 
-      // Sauce components are not inventory-tracked — do not invent gaps.
       if (sauce) {
         unknowns.push(`소스(${sauce.name}) 재료 재고는 확인하지 않음`);
       }
 
       const title = pattern ? `${pattern.name} · ${source.name}` : source.name;
+      const score = scoreDinnerCandidate(
+        {
+          stockStatus: source.stockStatus,
+          effort,
+          protein: source.name,
+          patternName: pattern?.name || '',
+          recent,
+        },
+        prefs,
+      );
+
+      if (prefs.likes?.length || prefs.dislikes?.length) {
+        if (score.parts.preference >= 0.99) reasons.push('가족 취향 · 맞춤');
+        else if (score.parts.preference <= 0.1) reasons.push('가족 취향 · 비선호 신호');
+      }
+
       candidates.push({
         key: `${source.keyId}-${pattern?.id || 'none'}-${sauce?.id || 'none'}`,
         title,
@@ -194,20 +245,14 @@ export function listDinnerCandidates(state) {
         unknowns,
         shopping,
         stockStatus: source.stockStatus,
+        effort,
+        recent,
+        score,
       });
     }
   }
 
-  // Prefer in-stock first, then not-recent
-  candidates.sort((a, b) => {
-    const sr = statusRank(a.stockStatus) - statusRank(b.stockStatus);
-    if (sr) return sr;
-    const ar = recentProteins.has(normalize(a.protein)) ? 1 : 0;
-    const br = recentProteins.has(normalize(b.protein)) ? 1 : 0;
-    if (ar !== br) return ar - br;
-    return a.title.localeCompare(b.title, 'ko');
-  });
-
+  candidates.sort(compareDinnerScores);
   return candidates;
 }
 
@@ -223,14 +268,6 @@ function recentProteinHints(state) {
   return set;
 }
 
-function statusRank(status) {
-  if (status === 'enough') return 0;
-  if (status === 'low') return 1;
-  if (status === 'out') return 2;
-  if (status === 'untracked') return 3;
-  return 9;
-}
-
 function normalize(name) {
   return String(name || '')
     .trim()
@@ -243,6 +280,12 @@ function guessUnit(name) {
   if (/계란|달걀/.test(name)) return '개';
   if (/두부/.test(name)) return '모';
   return '개';
+}
+
+function guessLocation(name) {
+  if (/고등어|삼치|연어|닭|돼지|소고기|고기/.test(name)) return 'freezer';
+  if (/두부|계란|달걀/.test(name)) return 'fridge';
+  return 'pantry';
 }
 
 /** Prefer household default sauces from seed (닭 양념 / 마늘간장 등). */
