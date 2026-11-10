@@ -543,14 +543,30 @@ export function createApp(root) {
           authGate
             ? ''
             : `<nav class="tabbar" aria-label="주요 메뉴">
-          ${tab('home', '홈')}
-          ${tab('food', '식생활')}
-          ${tab('family', '가족')}
-          ${tab('more', '더보기')}
+          <div class="tabbar-inner">
+            ${tab('home', '홈', 'home')}
+            ${tab('food', '식생활', 'food')}
+            ${tab('family', '가족', 'family')}
+            ${tab('more', '더보기', 'more')}
+          </div>
         </nav>`
         }
       </div>`;
     bind();
+  }
+
+  function tabIcon(kind) {
+    const common = 'class="tab-ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
+    if (kind === 'home') {
+      return `<svg ${common}><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1v-9.5Z"/></svg>`;
+    }
+    if (kind === 'food') {
+      return `<svg ${common}><path d="M4 11h16v2H4z"/><path d="M7 7c0-1.5 1.2-3 3-3s3 1.5 3 3"/><path d="M14 7c0-1.5 1.2-3 3-3s3 1.5 3 3"/><path d="M6 13v5a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-5"/></svg>`;
+    }
+    if (kind === 'family') {
+      return `<svg ${common}><circle cx="9" cy="8" r="3"/><circle cx="16" cy="9" r="2.4"/><path d="M3.5 19c.6-3 2.8-5 5.5-5s4.9 2 5.5 5"/><path d="M13 14.2c1.7-.4 3.4.3 4.5 1.8.5.7.8 1.5 1 2"/></svg>`;
+    }
+    return `<svg ${common}><circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="18" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>`;
   }
 
   function authGateView() {
@@ -578,9 +594,12 @@ export function createApp(root) {
       </section>`;
   }
 
-  function tab(id, label) {
+  function tab(id, label, icon) {
     const on = state.settings.view === id;
-    return `<button type="button" data-nav="${id}" class="${on ? 'on' : ''}" ${on ? 'aria-current="page"' : ''}>${label}</button>`;
+    return `<button type="button" data-nav="${id}" class="tab ${on ? 'on' : ''}" ${on ? 'aria-current="page"' : ''}>
+      ${tabIcon(icon || id)}
+      <span class="tab-label">${label}</span>
+    </button>`;
   }
 
   function viewTitle(view) {
