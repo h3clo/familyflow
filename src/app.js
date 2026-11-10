@@ -801,7 +801,6 @@ export function createApp(root) {
     const stockChip = offer.stockLabel
       ? `<p class="dinner-stock-chip" role="status">${esc(offer.stockLabel)}</p>`
       : '';
-    const reasonList = renderDinnerReasons(offer.reasons, offer.unknowns || []);
     const actions = `<div class="dinner-actions">
       <button type="button" class="primary block" data-act="dinner-accept">이대로</button>
       <button type="button" class="dinner-swap" data-act="dinner-swap" ${offer.hasAlt ? '' : 'disabled'}>다른 후보로 바꾸기</button>
@@ -826,7 +825,6 @@ export function createApp(root) {
             ? '재고를 추측하지 않아요. 가정 제안만 보여 드려요.'
             : '확인된 재고·식단 신호를 섞어 골랐어요.',
         stockChip,
-        reasonHtml: reasonList,
         actions,
       });
     }
@@ -841,7 +839,6 @@ export function createApp(root) {
             ? '재고를 추측하지 않아요. 가정 제안만 보여 드려요.'
             : '확인된 재고·식단 신호를 섞어 골랐어요.'
         }</p>
-        ${reasonList}
         ${actions}
       </div>
     </section>`;
@@ -878,36 +875,19 @@ export function createApp(root) {
     </form>`;
   }
 
-  function renderDinnerReasons(reasons = [], unknowns = []) {
-    const items = [
-      ...reasons.map((r) => ({ text: r, kind: 'reason' })),
-      ...unknowns.map((u) => ({ text: u, kind: 'unknown' })),
-    ];
-    if (!items.length) return '';
-    const primary = items.slice(0, 2);
-    const rest = items.slice(2);
-    const li = (item, i) =>
-      `<li class="${item.kind === 'unknown' ? 'is-unknown' : ''}"><span class="dinner-reason-idx" aria-hidden="true">${
-        i + 1
-      }</span><span class="dinner-reason-text">${esc(item.text)}</span></li>`;
-    return `<div class="dinner-reasons-wrap">
-      <ul class="dinner-reasons" aria-label="추천 근거">${primary.map((item, i) => li(item, i)).join('')}</ul>
-      ${
-        rest.length
-          ? `<details class="dinner-reasons-more"><summary>근거 ${rest.length}개 더 보기</summary>
-            <ul class="dinner-reasons" aria-label="추가 추천 근거">${rest
-              .map((item, i) => li(item, i + primary.length))
-              .join('')}</ul></details>`
-          : ''
-      }
-    </div>`;
-  }
-
-  function dinnerStage({ visual, badgeLabel, kicker, title, support, stockChip = '', reasonHtml = '', actions }) {
+  function dinnerStage({ visual, badgeLabel, kicker, title, support, stockChip = '', actions }) {
+    const sauceAlt = visual.sauceShortName ? `소스 · ${visual.sauceShortName}` : '소스';
     return `<section class="dinner-stage" aria-label="오늘 저녁">
       <div class="dinner-media" style="background-image:url('${esc(visual.imageSrc)}')" role="img" aria-label="${esc(
         visual.patternName || '저녁 패턴',
       )}">
+        ${
+          visual.sauceTextureSrc
+            ? `<img class="dinner-sauce-texture" src="${esc(visual.sauceTextureSrc)}" alt="${esc(
+                sauceAlt,
+              )}" decoding="async" />`
+            : ''
+        }
         <div class="dinner-media-top">
           <p class="dinner-brand">Family Flow</p>
           <div class="dinner-media-meta">
@@ -917,22 +897,12 @@ export function createApp(root) {
         </div>
         <h1 class="dinner-kicker">${esc(kicker)}</h1>
         <span class="dinner-media-badge">${esc(badgeLabel)}</span>
-        ${
-          visual.sauceImageSrc
-            ? `<img class="dinner-sauce-img" src="${esc(visual.sauceImageSrc)}" alt="${esc(
-                visual.sauceLabel || '소스',
-              )}" width="72" height="72" loading="lazy" />`
-            : visual.sauceLabel
-              ? `<span class="dinner-sauce">${esc(visual.sauceLabel)}</span>`
-              : ''
-        }
       </div>
       <div class="dinner-hero-body">
         <p class="label">오늘 저녁 추천</p>
         <h2>${esc(title)}</h2>
         ${stockChip || ''}
         ${support ? `<p class="hint">${esc(support)}</p>` : ''}
-        ${reasonHtml || ''}
         ${actions || ''}
       </div>
     </section>`;

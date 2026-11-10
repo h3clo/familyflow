@@ -9,31 +9,31 @@ const state = {
   ],
 };
 
-test('maps 야채찜 to steam asset and sauce overlay label + png', () => {
+test('maps 야채찜 to steam asset and sauce texture overlay', () => {
   const v = resolveDinnerVisual(state, {
     patternName: '야채찜',
     sauceName: '마늘간장 소스',
   });
   assert.match(v.imageSrc, /dinner\/steam\.jpg$/);
-  assert.equal(v.sauceLabel, '소스 · 마늘간장 소스');
-  assert.match(v.sauceImageSrc, /dinner\/sauces\/garlic-soy\.png$/);
+  assert.equal(v.sauceShortName, '마늘간장 소스');
+  assert.match(v.sauceTextureSrc, /dinner\/sauces\/garlic-soy\.png$/);
 });
 
-test('maps 야채구이 to roast asset and shortens long sauce chips', () => {
+test('maps 야채구이 roast + chicken marinade texture', () => {
   const v = resolveDinnerVisual(state, {
     patternName: '야채구이',
     sauceName: '닭 양념 (마늘간장설탕)',
   });
   assert.match(v.imageSrc, /dinner\/roast\.jpg$/);
-  assert.equal(v.sauceLabel, '소스 · 닭 양념');
-  assert.match(v.sauceImageSrc, /dinner\/sauces\/chicken-marinade\.png$/);
+  assert.equal(v.sauceShortName, '닭 양념');
+  assert.match(v.sauceTextureSrc, /dinner\/sauces\/chicken-marinade\.png$/);
 });
 
 test('returns no image for unknown patterns', () => {
   const v = resolveDinnerVisual(state, { patternName: '비빔밥', sauceName: null });
   assert.equal(v.imageSrc, null);
-  assert.equal(v.sauceLabel, null);
-  assert.equal(v.sauceImageSrc, null);
+  assert.equal(v.sauceTextureSrc, null);
+  assert.equal(v.sauceShortName, null);
 });
 
 test('sauceAsset maps seed sauce names', () => {
