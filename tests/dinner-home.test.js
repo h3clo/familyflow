@@ -4,6 +4,8 @@ import {
   buildDinnerHomeOffer,
   formatDinnerOfferTitle,
   listDinnerCandidates,
+  uniqueByPatternSauce,
+  STARTER_PROTEINS,
 } from '../src/domain/dinnerHome.js';
 import { resolveDinnerVisual } from '../src/domain/dinnerVisual.js';
 import { previewProposal, applyProposal } from '../src/domain/proposals.js';
@@ -103,27 +105,32 @@ test('바꾸기 cycles to another candidate', () => {
   assert.notEqual(a.offer.key, b.offer.key);
 });
 
-test('prefers household default sauces for roast chicken', () => {
+test('roast/steam catalogs expose garlic sauces for chicken stock', () => {
   const state = baseState([{ id: 'i1', name: '닭고기', status: 'enough' }]);
   state.sauces = [
     { id: 's1', name: '토마토 양파 소스', forPatterns: ['야채구이'] },
     { id: 's2', name: '간장마늘 양념', forPatterns: ['야채구이'] },
     { id: 's3', name: '마늘 간장 소스', forPatterns: ['야채찜'] },
   ];
-  const roast = listDinnerCandidates(state).find((c) => c.patternName === '야채구이');
-  assert.equal(roast.sauceName, '간장마늘 양념');
-  const steam = listDinnerCandidates(state).find((c) => c.patternName === '야채찜');
-  assert.equal(steam.sauceName, '마늘 간장 소스');
+  const list = listDinnerCandidates(state);
+  assert.ok(list.some((c) => c.patternName === '야채구이' && c.sauceName === '간장마늘 양념'));
+  assert.ok(list.some((c) => c.patternName === '야채찜' && c.sauceName === '마늘 간장 소스'));
 });
 
-test('starter candidates expose many pattern×sauce hero photos, not only garlic-soy', () => {
+test('starter swap list is unique pattern×sauce photos including shabu', () => {
   const state = seedState(createEmptyState());
-  const list = listDinnerCandidates(state);
+  const swap = uniqueByPatternSauce(listDinnerCandidates(state));
   const files = new Set(
-    list.map((c) => (resolveDinnerVisual(state, c).imageSrc || '').replace(/\?.*$/, '').split('/').pop()),
+    swap.map((c) => (resolveDinnerVisual(state, c).imageSrc || '').replace(/\?.*$/, '').split('/').pop()),
   );
-  assert.ok(files.size >= 8, `expected many prebakes in rotation, got ${[...files]}`);
-  assert.ok([...files].some((f) => f.includes('tomato') || f.includes('buchujang') || f.includes('sriracha')));
+  assert.ok(files.size >= 10, `expected many prebakes in rotation, got ${[...files]}`);
+  assert.ok([...files].some((f) => f.startsWith('shabu')));
+  assert.ok(swap.some((c) => c.patternName === '샤브샤브'));
+  assert.ok(swap.every((c) => c.title === c.patternName));
+  assert.deepEqual(
+    STARTER_PROTEINS,
+    ['닭다리살', '연어', '고등어', '우삼겹', '대패삼겹살', '목살'],
+  );
 });
 
 test('out-of-stock protein includes shopping.add in proposal', () => {

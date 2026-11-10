@@ -124,6 +124,35 @@ export function seedSauces() {
       visualKey: 'nutmeg',
       notes: '기본은 올리브유. 구운 야채·닭에 따뜻하게. 과하면 쓰니 소량.',
     },
+    {
+      id: uid(),
+      name: '참깨 소스',
+      components: [
+        { name: '갈아낸 깨' },
+        { name: '간장' },
+        { name: '식초' },
+        { name: '설탕 또는 올리고당' },
+        { name: '물' },
+      ],
+      exactAmounts: false,
+      forPatterns: ['샤브샤브'],
+      visualKey: 'sesame',
+      notes: '양배추·우삼겹 샤브에. 농도만 취향껏.',
+    },
+    {
+      id: uid(),
+      name: '폰즈 소스',
+      components: [
+        { name: '간장' },
+        { name: '식초 또는 레몬즙' },
+        { name: '맛술 또는 미림' },
+        { name: '다시마·가쓰오 육수(선택)' },
+      ],
+      exactAmounts: false,
+      forPatterns: ['샤브샤브'],
+      visualKey: 'ponzu',
+      notes: '담백한 샤브 디핑. 시트러스 향만 약하게.',
+    },
   ];
 }
 
@@ -150,10 +179,17 @@ export function seedState(state) {
     },
     {
       id: uid(),
+      name: '샤브샤브',
+      method: 'shabu',
+      effort: 'low',
+      notes: '양배추 채썰고 우삼겹·야채 넣어 가볍게',
+    },
+    {
+      id: uid(),
       name: '간단 아침',
       method: 'assemble',
       effort: 'low',
-      notes: '아침·점심 추천은 아직 안 씀. 저녁(찜·구이)만 다뤄요.',
+      notes: '아침·점심 추천은 아직 안 씀. 저녁(찜·구이·샤브)만 다뤄요.',
     },
   ];
 
