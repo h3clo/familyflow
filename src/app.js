@@ -31,7 +31,10 @@ import {
 } from './domain/suggestions.js';
 import { ProposalError } from './domain/proposals.js';
 import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
-import { buildDinnerHomeOffer } from './domain/dinnerHome.js';
+import {
+  buildDinnerHomeOffer,
+  createStockRegisterProposalFromUserInput,
+} from './domain/dinnerHome.js';
 import { resolveDinnerVisual } from './domain/dinnerVisual.js';
 import { nextFoodAction, normalizeFoodNav } from './domain/foodHub.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
@@ -103,6 +106,8 @@ export function createApp(root) {
   let pendingApproval = null;
   /** Cycle index for home dinner 「바꾸기」 alternatives (session only). */
   let dinnerAltIndex = 0;
+  /** Session-only stock confirm form for untracked dinner proteins. */
+  let stockRegisterDraft = null;
   /** @type {{ role: 'user'|'assistant', text: string, kind?: string, engine?: string }[]} */
   let chatLog = [];
   let chatBusy = false;
@@ -766,8 +771,10 @@ export function createApp(root) {
       <button type="button" class="primary block" data-act="dinner-accept">이대로</button>
       <button type="button" class="dinner-swap" data-act="dinner-swap" ${offer.hasAlt ? '' : 'disabled'}>다른 후보로 바꾸기</button>
       ${
-        offer.stockRegisterProposal
-          ? `<button type="button" class="secondary block" data-act="dinner-register-stock">재고로 등록 (승인 후)</button>`
+        offer.canRegisterStock
+          ? stockRegisterDraft?.protein === offer.protein
+            ? renderStockRegisterForm(offer.protein)
+            : `<button type="button" class="secondary block" data-act="dinner-register-stock">재고 확인 후 등록</button>`
           : ''
       }
       <p class="fine">저녁·재고 모두 승인 후에만 저장돼요</p>
@@ -805,6 +812,37 @@ export function createApp(root) {
         ${actions}
       </div>
     </section>`;
+  }
+
+  function renderStockRegisterForm(protein) {
+    return `<form data-form="dinner-stock-register" class="dinner-stock-form" aria-label="재고 확인 후 등록">
+      <p class="hint"><strong>${esc(protein)}</strong> — 확인한 값만 적어요. 비운 수량·단위는 저장하지 않아요.</p>
+      <label>보유 상태
+        <select name="status" required>
+          <option value="">선택해 주세요</option>
+          <option value="enough">충분함</option>
+          <option value="low">부족함</option>
+          <option value="out">없음</option>
+          <option value="unknown">모름</option>
+        </select>
+      </label>
+      <label>보관 위치
+        <select name="location" required>
+          <option value="">선택해 주세요</option>
+          <option value="fridge">냉장고</option>
+          <option value="freezer">냉동실</option>
+          <option value="pantry">실온·팬트리</option>
+          <option value="storage">창고</option>
+        </select>
+      </label>
+      <label>수량 (선택)<input name="quantity" type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="모를면 비워 두세요" /></label>
+      <label>단위 (선택)<input name="unit" maxlength="12" placeholder="예: 개, 마리 (선택)" /></label>
+      <input type="hidden" name="name" value="${esc(protein)}" />
+      <div class="row-actions wrap">
+        <button type="submit" class="primary">미리보기</button>
+        <button type="button" class="ghost" data-act="dinner-stock-cancel">취소</button>
+      </div>
+    </form>`;
   }
 
   function renderDinnerReasons(reasons = [], unknowns = []) {
@@ -1389,14 +1427,45 @@ export function createApp(root) {
     root.querySelectorAll('[data-act=dinner-register-stock]').forEach((btn) => {
       btn.onclick = () => {
         const dinnerHome = buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex });
-        const proposal = dinnerHome.offer?.stockRegisterProposal;
-        if (!proposal) {
+        const protein = dinnerHome.offer?.protein;
+        if (!dinnerHome.offer?.canRegisterStock || !protein) {
           setToast('지금은 등록할 가정 재료가 없어요.');
           return;
         }
+        stockRegisterDraft = { protein };
+        pendingApproval = null;
+        render();
+      };
+    });
+
+    root.querySelectorAll('[data-act=dinner-stock-cancel]').forEach((btn) => {
+      btn.onclick = () => {
+        stockRegisterDraft = null;
+        pendingApproval = null;
+        setToast('재고 등록을 취소했어요. 목록은 그대로예요.');
+      };
+    });
+
+    const stockForm = root.querySelector('[data-form=dinner-stock-register]');
+    if (stockForm) {
+      stockForm.onsubmit = (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(stockForm));
+        const built = createStockRegisterProposalFromUserInput({
+          name: fd.name,
+          status: fd.status,
+          location: fd.location,
+          quantity: fd.quantity,
+          unit: fd.unit,
+        });
+        if (!built.ok) {
+          setToast(built.error || '입력값을 확인해 주세요.');
+          return;
+        }
         try {
-          const preview = previewProposal(state, proposal);
-          pendingApproval = { proposal, preview };
+          const preview = previewProposal(state, built.proposal);
+          pendingApproval = { proposal: built.proposal, preview };
+          stockRegisterDraft = null;
           render();
           if (!preview.ok) setToast(preview.errors[0]?.message || '이 제안은 적용할 수 없어요.');
         } catch (err) {
@@ -1404,7 +1473,7 @@ export function createApp(root) {
           setToast(err.message || '미리보기에 실패했어요.');
         }
       };
-    });
+    }
 
     root.querySelectorAll('[data-act=dinner-swap]').forEach((btn) => {
       btn.onclick = () => {

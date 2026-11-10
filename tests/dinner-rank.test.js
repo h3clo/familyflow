@@ -4,11 +4,16 @@ import {
   parseFamilyPreferenceNotes,
   scoreDinnerCandidate,
   compareDinnerScores,
+  resolvePreferenceMatch,
   DINNER_RANK_WEIGHTS,
 } from '../src/domain/dinnerRank.js';
-import { listDinnerCandidates, UNTRACKED_STOCK_LABEL } from '../src/domain/dinnerHome.js';
+import {
+  listDinnerCandidates,
+  UNTRACKED_STOCK_LABEL,
+  buildDinnerHomeOffer,
+  createStockRegisterProposalFromUserInput,
+} from '../src/domain/dinnerHome.js';
 import { previewProposal, applyProposal } from '../src/domain/proposals.js';
-import { buildDinnerHomeOffer } from '../src/domain/dinnerHome.js';
 
 function baseState(partial = {}) {
   return {
@@ -120,22 +125,70 @@ test('parseFamilyPreferenceNotes reads explicit tags only', () => {
   assert.deepEqual(prefs.dislikes, ['고등어']);
 });
 
-test('untracked offer shows clear label and stock register needs approval', () => {
+test('untracked offer labels clearly and does not prebuild enough/qty=1 proposal', () => {
   const offer = buildDinnerHomeOffer(baseState({ inventory: [] }));
   assert.equal(offer.status, 'offer');
   assert.equal(offer.offer.stockLabel, UNTRACKED_STOCK_LABEL);
   assert.ok(offer.offer.reasons.includes(UNTRACKED_STOCK_LABEL));
-  assert.ok(offer.offer.stockRegisterProposal);
+  assert.equal(offer.offer.canRegisterStock, true);
+  assert.equal(offer.offer.stockRegisterProposal, undefined);
   assert.equal(offer.offer.proposal.ops.some((o) => o.op === 'inventory.upsert'), false);
+});
 
-  const preview = previewProposal(baseState({ inventory: [] }), offer.offer.stockRegisterProposal);
-  assert.equal(preview.ok, true);
-  assert.equal(baseState({ inventory: [] }).inventory.length, 0);
+test('stock register rejects missing status/location (no estimated defaults)', () => {
+  const missing = createStockRegisterProposalFromUserInput({
+    name: '닭고기',
+    status: '',
+    location: 'fridge',
+  });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.proposal, null);
 
+  const noLoc = createStockRegisterProposalFromUserInput({
+    name: '닭고기',
+    status: 'enough',
+    location: '',
+  });
+  assert.equal(noLoc.ok, false);
+
+  // Forbidden: blank input must never become enough + quantity 1
+  const blankish = createStockRegisterProposalFromUserInput({ name: '닭고기' });
+  assert.equal(blankish.ok, false);
+  assert.equal(blankish.proposal, null);
+
+  const ok = createStockRegisterProposalFromUserInput({
+    name: '닭고기',
+    status: 'low',
+    location: 'freezer',
+    quantity: '',
+    unit: '',
+  });
+  assert.equal(ok.ok, true);
+  const payload = ok.proposal.ops[0].payload;
+  assert.equal(payload.status, 'low');
+  assert.equal(payload.location, 'freezer');
+  assert.equal('quantity' in payload, false);
+  assert.equal('unit' in payload, false);
+  assert.notEqual(payload.status, 'enough');
+  assert.notEqual(payload.quantity, 1);
+});
+
+test('cancel path: without applyProposal inventory stays unchanged', () => {
   const state = baseState({ inventory: [] });
-  const applied = applyProposal(state, offer.offer.stockRegisterProposal);
-  assert.equal(applied.ok, true);
-  assert.ok(state.inventory.some((i) => i.name === offer.offer.protein && i.status === 'enough'));
+  const before = structuredClone(state.inventory);
+  const built = createStockRegisterProposalFromUserInput({
+    name: '고등어',
+    status: 'enough',
+    location: 'fridge',
+    quantity: 2,
+    unit: '마리',
+  });
+  assert.equal(built.ok, true);
+  const preview = previewProposal(state, built.proposal);
+  assert.equal(preview.ok, true);
+  // User cancels — never call applyProposal
+  assert.deepEqual(state.inventory, before);
+  assert.equal(state.inventory.length, 0);
 });
 
 test('preference dislike lowers score without schema columns', () => {
@@ -148,4 +201,54 @@ test('preference dislike lowers score without schema columns', () => {
     { likes: [], dislikes: ['고등어'] },
   );
   assert.ok(liked.total > hated.total);
+});
+
+test('member like vs dislike conflict does not auto-pick either side', () => {
+  const prefs = parseFamilyPreferenceNotes([
+    { note: '좋아함:닭' },
+    { note: '싫어함:닭고기' },
+  ]);
+  // '닭' is substring match on 닭고기; conflict tokens may differ — score via resolve
+  const match = resolvePreferenceMatch(
+    { protein: '닭고기', patternName: '야채찜' },
+    { likes: ['닭'], dislikes: ['닭'] },
+  );
+  assert.equal(match.kind, 'conflict');
+  assert.ok(match.signal > 0.05 && match.signal < 1);
+
+  const scored = scoreDinnerCandidate(
+    { stockStatus: 'enough', effort: 'medium', protein: '닭고기', patternName: '야채찜', recent: false },
+    { likes: ['닭'], dislikes: ['닭'] },
+  );
+  assert.equal(scored.preferenceKind, 'conflict');
+
+  const list = listDinnerCandidates(
+    baseState({
+      inventory: [{ id: 'i1', name: '닭고기', status: 'enough', location: 'freezer' }],
+      members: [{ note: '좋아함:닭' }, { note: '싫어함:닭' }],
+    }),
+  );
+  assert.ok(list.some((c) => c.reasons.some((r) => /선호 충돌/.test(r))));
+});
+
+test('recent duplication signal is protein-only (pattern repeat alone does not mark recent)', () => {
+  const state = baseState({
+    inventory: [
+      { id: 'i1', name: '닭고기', status: 'enough', location: 'freezer' },
+      { id: 'i2', name: '두부', status: 'enough', location: 'fridge' },
+    ],
+    mealPlan: {
+      days: [
+        {
+          date: '2026-11-09',
+          slots: [{ mealType: 'dinner', protein: '닭고기', patternName: '야채찜', title: '어제' }],
+        },
+      ],
+    },
+  });
+  const list = listDinnerCandidates(state);
+  const chickenSteam = list.find((c) => c.protein === '닭고기' && c.patternName === '야채찜');
+  const tofuSteam = list.find((c) => c.protein === '두부' && c.patternName === '야채찜');
+  assert.equal(chickenSteam.recent, true);
+  assert.equal(tofuSteam.recent, false);
 });

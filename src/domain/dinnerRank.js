@@ -33,7 +33,39 @@ export function parseFamilyPreferenceNotes(members = []) {
       dislikes.add(normalizeToken(token));
     }
   }
-  return { likes: [...likes].filter(Boolean), dislikes: [...dislikes].filter(Boolean) };
+  const likeList = [...likes].filter(Boolean);
+  const dislikeList = [...dislikes].filter(Boolean);
+  const conflicts = likeList.filter((t) => dislikeList.includes(t));
+  return { likes: likeList, dislikes: dislikeList, conflicts };
+}
+
+/**
+ * Preference match for a candidate.
+ * Member A likes + member B dislikes the same token → kind 'conflict' (neither auto-wins).
+ */
+export function resolvePreferenceMatch(candidate, prefs = {}) {
+  const likes = prefs.likes || [];
+  const dislikes = prefs.dislikes || [];
+  if (!likes.length && !dislikes.length) {
+    return { kind: 'none', signal: 0.5, matchedLikes: [], matchedDislikes: [] };
+  }
+
+  const protein = normalizeToken(candidate.protein);
+  const pattern = normalizeToken(candidate.patternName);
+  const hay = `${protein} ${pattern}`;
+  const matchedLikes = likes.filter((l) => l && hay.includes(l));
+  const matchedDislikes = dislikes.filter((d) => d && hay.includes(d));
+
+  if (matchedLikes.length && matchedDislikes.length) {
+    return { kind: 'conflict', signal: 0.3, matchedLikes, matchedDislikes };
+  }
+  if (matchedDislikes.length) {
+    return { kind: 'dislike', signal: 0.05, matchedLikes, matchedDislikes };
+  }
+  if (matchedLikes.length) {
+    return { kind: 'like', signal: 1, matchedLikes, matchedDislikes };
+  }
+  return { kind: 'neutral', signal: 0.45, matchedLikes, matchedDislikes };
 }
 
 /**
@@ -44,7 +76,8 @@ export function scoreDinnerCandidate(candidate, prefs = {}) {
   const stock = stockSignal(candidate.stockStatus);
   const effort = effortSignal(candidate.effort);
   const recent = candidate.recent ? 0.15 : 1;
-  const preference = preferenceSignal(candidate, prefs);
+  const prefMatch = resolvePreferenceMatch(candidate, prefs);
+  const preference = prefMatch.signal;
 
   const w = DINNER_RANK_WEIGHTS;
   const total =
@@ -58,6 +91,7 @@ export function scoreDinnerCandidate(candidate, prefs = {}) {
       recent: round4(recent),
       preference: round4(preference),
     },
+    preferenceKind: prefMatch.kind,
   };
 }
 
@@ -80,20 +114,6 @@ function effortSignal(effort) {
   if (effort === 'low') return 1;
   if (effort === 'medium') return 0.55;
   if (effort === 'high') return 0.25;
-  return 0.45;
-}
-
-function preferenceSignal(candidate, prefs) {
-  const likes = prefs.likes || [];
-  const dislikes = prefs.dislikes || [];
-  if (!likes.length && !dislikes.length) return 0.5;
-
-  const protein = normalizeToken(candidate.protein);
-  const pattern = normalizeToken(candidate.patternName);
-  const hay = `${protein} ${pattern}`;
-
-  if (dislikes.some((d) => d && hay.includes(d))) return 0.05;
-  if (likes.some((l) => l && hay.includes(l))) return 1;
   return 0.45;
 }
 

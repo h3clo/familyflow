@@ -88,31 +88,6 @@ export function buildDinnerHomeOffer(state, opts = {}) {
     ops,
   });
 
-  const stockRegisterProposal =
-    pick.stockStatus === 'untracked' && pick.protein
-      ? createProposal({
-          source: 'rules',
-          key: `home-dinner-stock-${pick.key}`,
-          priority: 40,
-          title: `재고로 등록: ${pick.protein}`,
-          reason: `${UNTRACKED_STOCK_LABEL}. 승인하면 ‘충분함’으로 재고에만 남겨요. 저녁 확정과는 별개예요.`,
-          actionLabel: '재고 등록 미리보기',
-          ops: [
-            {
-              op: 'inventory.upsert',
-              payload: {
-                name: pick.protein,
-                status: 'enough',
-                location: guessLocation(pick.protein),
-                category: 'food',
-                quantity: 1,
-                unit: guessUnit(pick.protein),
-              },
-            },
-          ],
-        })
-      : null;
-
   return {
     status: 'offer',
     dinner: null,
@@ -122,11 +97,80 @@ export function buildDinnerHomeOffer(state, opts = {}) {
       nextAltIndex: hasAlt ? nextIndex : altIndex,
       hasAlt,
       proposal,
-      stockRegisterProposal,
+      canRegisterStock: pick.stockStatus === 'untracked' && !!pick.protein,
       stockLabel: pick.stockStatus === 'untracked' ? UNTRACKED_STOCK_LABEL : null,
     },
     emptyReason: null,
   };
+}
+
+/**
+ * Build inventory upsert proposal only from user-confirmed fields.
+ * Does not invent status/quantity/location — missing required fields → error.
+ *
+ * @param {{ name: string, status: string, location: string, quantity?: string|number|null, unit?: string|null }} input
+ */
+export function createStockRegisterProposalFromUserInput(input = {}) {
+  const name = String(input.name || '').trim();
+  const status = String(input.status || '').trim();
+  const location = String(input.location || '').trim();
+  const unitRaw = String(input.unit || '').trim();
+  const qtyRaw = input.quantity;
+
+  if (!name) {
+    return { ok: false, error: '재료 이름이 필요해요.', proposal: null };
+  }
+  if (!['enough', 'low', 'out', 'unknown'].includes(status)) {
+    return {
+      ok: false,
+      error: '보유 상태(충분함/부족함/없음/모름)를 선택해 주세요. 추정으로 넣지 않아요.',
+      proposal: null,
+    };
+  }
+  if (!['fridge', 'freezer', 'pantry', 'storage'].includes(location)) {
+    return {
+      ok: false,
+      error: '보관 위치를 선택해 주세요. 추정으로 넣지 않아요.',
+      proposal: null,
+    };
+  }
+
+  const payload = {
+    name,
+    status,
+    location,
+    category: 'food',
+  };
+
+  if (qtyRaw !== '' && qtyRaw != null) {
+    const quantity = Number(qtyRaw);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return { ok: false, error: '수량은 비우거나 0보다 큰 숫자로 적어 주세요.', proposal: null };
+    }
+    payload.quantity = quantity;
+  }
+  // No quantity key → inventory stays quantity:null (user left blank on purpose).
+
+  if (unitRaw) {
+    payload.unit = unitRaw.slice(0, 12);
+  }
+
+  const statusLabel =
+    { enough: '충분함', low: '부족함', out: '없음', unknown: '모름' }[status] || status;
+
+  const proposal = createProposal({
+    source: 'rules',
+    key: `home-dinner-stock-${name}-${status}-${location}`,
+    priority: 40,
+    title: `재고로 등록: ${name}`,
+    reason: `직접 확인한 값만 넣어요 · 상태 ${statusLabel} · 위치 ${location}${
+      payload.quantity != null ? ` · 수량 ${payload.quantity}` : ' · 수량 미입력'
+    }. 저녁 확정과는 별개예요.`,
+    actionLabel: '재고 등록 미리보기',
+    ops: [{ op: 'inventory.upsert', payload }],
+  });
+
+  return { ok: true, error: null, proposal };
 }
 
 /** Deterministic candidates with blended ranking (not absolute stock-first). */
@@ -227,10 +271,9 @@ export function listDinnerCandidates(state) {
         prefs,
       );
 
-      if (prefs.likes?.length || prefs.dislikes?.length) {
-        if (score.parts.preference >= 0.99) reasons.push('가족 취향 · 맞춤');
-        else if (score.parts.preference <= 0.1) reasons.push('가족 취향 · 비선호 신호');
-      }
+      if (score.preferenceKind === 'like') reasons.push('가족 취향 · 맞춤');
+      else if (score.preferenceKind === 'dislike') reasons.push('가족 취향 · 비선호 신호');
+      else if (score.preferenceKind === 'conflict') reasons.push('가족 취향 · 선호 충돌(신중)');
 
       candidates.push({
         key: `${source.keyId}-${pattern?.id || 'none'}-${sauce?.id || 'none'}`,
@@ -256,6 +299,11 @@ export function listDinnerCandidates(state) {
   return candidates;
 }
 
+/**
+ * Recent-meal duplication signal is **protein-name based only**
+ * (todayDinner.protein + mealPlan dinner slot proteins).
+ * Cooking pattern / sauce repetition is NOT included in v2 ranking.
+ */
 function recentProteinHints(state) {
   const set = new Set();
   if (state.todayDinner?.protein) set.add(normalize(state.todayDinner.protein));
@@ -280,12 +328,6 @@ function guessUnit(name) {
   if (/계란|달걀/.test(name)) return '개';
   if (/두부/.test(name)) return '모';
   return '개';
-}
-
-function guessLocation(name) {
-  if (/고등어|삼치|연어|닭|돼지|소고기|고기/.test(name)) return 'freezer';
-  if (/두부|계란|달걀/.test(name)) return 'fridge';
-  return 'pantry';
 }
 
 /** Prefer household default sauces from seed (닭 양념 / 마늘간장 등). */
