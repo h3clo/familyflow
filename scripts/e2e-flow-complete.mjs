@@ -82,6 +82,12 @@ await page.waitForSelector('.approval', { timeout: 5000 });
 await page.click('[data-act="confirm-proposal"]');
 await page.waitForTimeout(400);
 
+// After confirm, stay on home (no bounce to 식단/장보기).
+const homeConfirmed = await page.locator('.dinner-stage, .dinner-hero').first().innerText();
+say('home after confirm:', homeConfirmed.slice(0, 80).replace(/\s+/g, ' '));
+if (!/확정/.test(homeConfirmed)) throw new Error('expected confirmed dinner on home');
+await page.screenshot({ path: path.join(OUT, 'flow-home-confirmed.png'), fullPage: true });
+
 await page.locator('[data-nav="food"]').first().click();
 await page.locator('[data-nav="food"][data-segment="meals"]').first().click();
 await page.waitForTimeout(200);

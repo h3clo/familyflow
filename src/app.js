@@ -759,15 +759,31 @@ export function createApp(root) {
     const pack = generateSuggestions(state);
     const list = ensureActiveList(state);
     const openCount = list.items.filter((i) => !i.checked).length;
-    const lowCount = state.inventory.filter((i) => i.status === 'out' || i.status === 'low').length;
     const dinnerHome = buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex });
-    const dinnerBlock = dinnerHomeBlock(dinnerHome, { immersive });
+    const dinnerBlock = dinnerHomeBlock(dinnerHome, { immersive, openShopCount: openCount });
+    const dinnerPending = dinnerHome.status === 'offer';
+
+    // While choosing tonight's dinner, keep the first viewport on that one job.
+    if (dinnerPending) {
+      if (pack.mode === 'setup' && !immersive) {
+        return `
+          ${dinnerBlock}
+          <section class="panel muted">
+            <p class="hint">재고·장보기는 식생활 탭에서 이어서 할 수 있어요. 지금은 저녁만 고르면 돼요.</p>
+          </section>
+          ${chatPanel({ collapsed: true })}`;
+      }
+      return `
+        ${dinnerBlock}
+        ${chatPanel({ collapsed: true })}`;
+    }
 
     if (pack.mode === 'setup') {
       return `
+        ${dinnerBlock}
         ${
           immersive
-            ? dinnerBlock
+            ? ''
             : `<section class="hero-assist">
           <p class="lede">목록을 채우기 전에, 필요한 일을 먼저 보여 드릴게요.</p>
           <h2>${esc(pack.setup.title)}</h2>
@@ -784,46 +800,22 @@ export function createApp(root) {
               )
               .join('')}
           </ul>
-        </section>
-        ${dinnerBlock}`
+        </section>`
         }
-        ${
-          immersive
-            ? `<section class="status-strip" aria-label="요약">
-          <div><p class="label">살 것</p><p class="budget-value">${openCount}</p></div>
-          <div><p class="label">재고 주의</p><p class="budget-value">${lowCount}</p></div>
-          <div><p class="label">저녁</p><p class="budget-value">${dinnerHome.status === 'confirmed' ? '확정' : dinnerHome.status === 'offer' ? '제안' : '미정'}</p></div>
-        </section>
-        ${chatPanel()}`
-            : chatPanel()
-        }`;
+        ${chatPanel({ collapsed: true })}`;
     }
 
     return `
       ${dinnerBlock}
-      <section class="status-strip" aria-label="요약">
-        <div><p class="label">살 것</p><p class="budget-value">${openCount}</p></div>
-        <div><p class="label">재고 주의</p><p class="budget-value">${lowCount}</p></div>
-        <div><p class="label">저녁</p><p class="budget-value">${dinnerHome.status === 'confirmed' ? '확정' : dinnerHome.status === 'offer' ? '제안' : '미정'}</p></div>
-      </section>
       <section class="panel">
         <h2>지금 챙길 일</h2>
         ${
           pack.suggestions.length
             ? `<ul class="suggest-list">${pack.suggestions.map(suggestCard).join('')}</ul>`
-            : `<p class="empty">지금은 급한 제안이 없어요. 장보기·재고는 아래에서 바로 갈 수 있어요.</p>`
+            : `<p class="empty">지금은 급한 제안이 없어요. 장보기·재고는 식생활 탭에서 열어요.</p>`
         }
       </section>
-      ${chatPanel()}
-      <section class="panel muted">
-        <h2>도구</h2>
-        <div class="tool-grid">
-          <button type="button" class="secondary" data-nav="food" data-segment="shopping">장보기${openCount ? ` · ${openCount}` : ''}</button>
-          <button type="button" class="secondary" data-nav="food" data-segment="inventory">재고</button>
-          <button type="button" class="secondary" data-nav="food" data-segment="meals">식단</button>
-        </div>
-        <p class="hint">세 가지는 식생활 탭 안에 모아 두었어요. 변경은 승인 후에만 저장돼요.</p>
-      </section>`;
+      ${chatPanel({ collapsed: true })}`;
   }
 
   /** Stock / sauce / protein chips under the dinner title. */
@@ -843,7 +835,7 @@ export function createApp(root) {
       .join('')}</div>`;
   }
 
-  function dinnerHomeBlock(dinnerHome, { immersive = false } = {}) {
+  function dinnerHomeBlock(dinnerHome, { immersive = false, openShopCount = 0 } = {}) {
     if (dinnerHome.status === 'confirmed') {
       const dinner = dinnerHome.dinner;
       const visual = resolveDinnerVisual(state, dinner);
@@ -851,6 +843,12 @@ export function createApp(root) {
         sauceName: dinner.sauceName,
         protein: dinner.protein,
       });
+      const shopAction =
+        openShopCount > 0
+          ? `<div class="dinner-actions">
+              <button type="button" class="secondary block" data-nav="food" data-segment="shopping">장보기 ${openShopCount}개 보기</button>
+            </div>`
+          : '';
       if (immersive && visual.imageSrc) {
         return dinnerStage({
           visual,
@@ -859,7 +857,7 @@ export function createApp(root) {
           title: dinner.title,
           meta,
           support: '',
-          actions: '',
+          actions: shopAction,
         });
       }
       return `<section class="panel dinner-hero" aria-label="오늘 저녁">
@@ -867,6 +865,7 @@ export function createApp(root) {
           <p class="label">오늘 저녁 · 확정</p>
           <h2>${esc(dinner.title)}</h2>
           ${meta}
+          ${shopAction}
         </div>
       </section>`;
     }
@@ -930,31 +929,34 @@ export function createApp(root) {
   }
 
   function renderStockRegisterForm(protein) {
+    const status = stockRegisterDraft?.status || '';
+    const location = stockRegisterDraft?.location || 'fridge';
     return `<form data-form="dinner-stock-register" class="dinner-stock-form" aria-label="재고 확인 후 등록">
-      <p class="hint"><strong>${esc(protein)}</strong> — 확인한 값만 적어요. 비운 수량·단위는 저장하지 않아요.</p>
-      <label>보유 상태
-        <select name="status" required>
-          <option value="">선택해 주세요</option>
-          <option value="enough">충분함</option>
-          <option value="low">부족함</option>
-          <option value="out">없음</option>
-          <option value="unknown">모름</option>
-        </select>
-      </label>
-      <label>보관 위치
-        <select name="location" required>
-          <option value="">선택해 주세요</option>
-          <option value="fridge">냉장고</option>
-          <option value="freezer">냉동실</option>
-          <option value="pantry">실온·팬트리</option>
-          <option value="storage">창고</option>
-        </select>
-      </label>
-      <label>수량 (선택)<input name="quantity" type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="모를면 비워 두세요" /></label>
-      <label>단위 (선택)<input name="unit" maxlength="12" placeholder="예: 개, 마리 (선택)" /></label>
+      <p class="hint"><strong>${esc(protein)}</strong> — 상태·위치만 고르면 돼요. 수량은 모를 때 비워 두세요.</p>
+      <p class="label">보유 상태</p>
+      <div class="status-chips" role="group" aria-label="보유 상태">
+        ${STATUSES.map(
+          (s) =>
+            `<button type="button" class="${status === s.id ? 'on' : ''}" data-act="stock-draft-status" data-status="${s.id}">${s.label}</button>`,
+        ).join('')}
+      </div>
+      <input type="hidden" name="status" value="${esc(status)}" required />
+      <p class="label">보관 위치</p>
+      <div class="status-chips" role="group" aria-label="보관 위치">
+        ${LOCATIONS.map(
+          (l) =>
+            `<button type="button" class="${location === l.id ? 'on' : ''}" data-act="stock-draft-location" data-location="${l.id}">${l.label}</button>`,
+        ).join('')}
+      </div>
+      <input type="hidden" name="location" value="${esc(location)}" required />
+      <details class="hh-name-details">
+        <summary>수량·단위 (선택)</summary>
+        <label>수량<input name="quantity" type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="모를면 비워 두세요" /></label>
+        <label>단위<input name="unit" maxlength="12" placeholder="예: 개, 마리" /></label>
+      </details>
       <input type="hidden" name="name" value="${esc(protein)}" />
       <div class="row-actions wrap">
-        <button type="submit" class="primary">미리보기</button>
+        <button type="submit" class="primary" ${status ? '' : 'disabled'}>미리보기</button>
         <button type="button" class="ghost" data-act="dinner-stock-cancel">취소</button>
       </div>
     </form>`;
@@ -995,9 +997,8 @@ export function createApp(root) {
     </section>`;
   }
 
-  function chatPanel() {
-    return `<section class="panel chat-panel" aria-label="가정 비서 대화">
-      <h2>말해 보세요</h2>
+  function chatPanel({ collapsed = false } = {}) {
+    const body = `
       <p class="hint">한국어로 장보기·식단·재고를 말해 주세요. AI는 제안만 하고, 승인 전에는 저장하지 않아요.</p>
       <div class="chat-log" role="log">
         ${
@@ -1017,7 +1018,18 @@ export function createApp(root) {
         <label class="sr-only" for="chat-text">메시지</label>
         <textarea id="chat-text" name="message" rows="2" maxlength="500" placeholder="무엇을 도와드릴까요?" ${chatBusy ? 'disabled' : ''}>${esc(chatDraft)}</textarea>
         <button type="submit" class="primary" ${chatBusy ? 'disabled' : ''}>${chatBusy ? '생각 중…' : '보내기'}</button>
-      </form>
+      </form>`;
+    if (collapsed) {
+      return `<section class="panel chat-panel muted" aria-label="가정 비서 대화">
+        <details class="hh-name-details">
+          <summary>말해 보세요 (필요할 때만)</summary>
+          ${body}
+        </details>
+      </section>`;
+    }
+    return `<section class="panel chat-panel" aria-label="가정 비서 대화">
+      <h2>말해 보세요</h2>
+      ${body}
     </section>`;
   }
 
@@ -1319,7 +1331,7 @@ export function createApp(root) {
     const todayStatusLabel =
       today.status === 'confirmed' ? '확정' : today.status === 'offer' ? '홈 후보 · 저장 전' : '추천 없음';
     return `
-      <p class="lede">지금은 <strong>저녁</strong>만 다뤄요. 오늘 저녁은 홈과 같은 상태예요. 아침·점심 추천은 나중에.</p>
+      <p class="lede">지금은 <strong>저녁</strong>만 다뤄요. 오늘 저녁은 홈과 같은 상태예요. 확정은 홈에서만 해요.</p>
       <section class="panel" data-meals-today="${esc(today.status)}">
         <h2>오늘</h2>
         <article class="meal-card">
@@ -1328,15 +1340,6 @@ export function createApp(root) {
           ${todayMeta}
           <small>${esc(today.hint)}</small>
         </article>
-        <div class="row-actions wrap">
-          ${
-            today.status === 'offer'
-              ? `<button type="button" class="primary" data-nav="home">홈에서 이대로 확정</button>`
-              : today.status === 'confirmed'
-                ? `<button type="button" class="ghost" data-nav="home">홈에서 보기</button>`
-                : `<button type="button" class="secondary" data-nav="home">홈 추천 보기</button>`
-          }
-        </div>
       </section>
       <section class="panel">
         <h2>나의 소스 · 방식</h2>
@@ -1656,12 +1659,32 @@ export function createApp(root) {
           setToast('지금은 등록할 가정 재료가 없어요.');
           return;
         }
-        stockRegisterDraft = { protein };
+        stockRegisterDraft = { protein, status: '', location: 'fridge' };
         pendingApproval = null;
         render();
       };
     });
 
+    root.querySelectorAll('[data-act=stock-draft-status]').forEach((btn) => {
+      btn.onclick = () => {
+        if (!stockRegisterDraft) return;
+        stockRegisterDraft = {
+          ...stockRegisterDraft,
+          status: btn.dataset.status,
+        };
+        render();
+      };
+    });
+    root.querySelectorAll('[data-act=stock-draft-location]').forEach((btn) => {
+      btn.onclick = () => {
+        if (!stockRegisterDraft) return;
+        stockRegisterDraft = {
+          ...stockRegisterDraft,
+          location: btn.dataset.location,
+        };
+        render();
+      };
+    });
     root.querySelectorAll('[data-act=dinner-stock-cancel]').forEach((btn) => {
       btn.onclick = () => {
         stockRegisterDraft = null;
