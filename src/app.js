@@ -22,9 +22,11 @@ import {
   applyPurchaseToInventory,
 } from './domain/inventory.js';
 import {
-  filterSortInventory,
+  filterInventory,
+  groupInventoryByLocation,
   statusLabel,
-  locationLabel,
+  formatInventoryNameQty,
+  repairOtherCategories,
   INV_STATUS_SHORT,
 } from './domain/inventoryList.js';
 import {
@@ -119,6 +121,7 @@ export function createApp(root) {
       migratedAt: null,
     };
   }
+  repairOtherCategories(state.inventory);
   persist(state);
 
   let toast = '';
@@ -127,11 +130,8 @@ export function createApp(root) {
   let editingInventoryId = null;
   /** Expanded compact inventory row (session only). */
   let expandedInventoryId = null;
-  /** Inventory list toolbar (session only — not persisted). */
+  /** Inventory keyword search (session only). */
   let invQuery = '';
-  let invFilterLocation = 'all';
-  let invFilterStatus = 'all';
-  let invSort = 'name';
   /** null = auto (open when empty / paste); otherwise remember user toggle. */
   let invToolsOpen = null;
   /** Family member note currently being edited. */
@@ -1224,15 +1224,22 @@ export function createApp(root) {
 
   function inventoryView() {
     const paste = orderPasteDraft;
-    const filtered = filterSortInventory(state.inventory, {
-      query: invQuery,
-      location: invFilterLocation,
-      status: invFilterStatus,
-      sort: invSort,
-    });
+    const filtered = filterInventory(state.inventory, { query: invQuery });
+    const groups = groupInventoryByLocation(filtered);
     const toolsOpen =
       invToolsOpen != null ? invToolsOpen : Boolean(paste) || state.inventory.length === 0;
     const toolsBody = `
+        <form class="manual-add" data-form="add-inventory">
+          <p class="hint">분류는 이름으로 자동 지정돼요. 틀리면 수정에서 바꾸세요.</p>
+          <div class="form-grid">
+            <label>이름<input name="name" required maxlength="80" placeholder="브로콜리, 과자, 휴지…" /></label>
+            <label>위치<select name="location">${LOCATIONS.map((l) => `<option value="${l.id}">${l.label}</option>`).join('')}</select></label>
+            <label>상태<select name="status">${STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('')}</select></label>
+            <label>수량(선택)<input name="quantity" type="number" min="0" step="any" /></label>
+            <label>단위<input name="unit" maxlength="12" placeholder="개" /></label>
+          </div>
+          <button type="submit" class="primary block">재고 등록</button>
+        </form>
         <form class="manual-add order-paste" data-form="order-paste">
           <p class="hint">네이버페이·마이쇼핑 주문 화면을 복사해 붙여 넣으면 재고 이름으로 정리해 드려요. 승인 전에 저장하지 않아요.</p>
           <p class="hint"><a href="${esc(NAVER_PAY_HISTORY_URL)}" target="_blank" rel="noopener noreferrer">네이버페이 주문·결제내역 바로가기</a></p>
@@ -1287,55 +1294,30 @@ export function createApp(root) {
             <button type="button" class="ghost block" data-act="clear-order-paste">붙여넣기 닫기</button>
           </section>`
             : ''
-        }
-        <form class="manual-add" data-form="add-inventory">
-          <p class="hint">분류는 이름으로 자동 지정돼요. 틀리면 수정에서 바꾸세요.</p>
-          <div class="form-grid">
-            <label>이름<input name="name" required maxlength="80" placeholder="브로콜리, 과자, 휴지…" /></label>
-            <label>위치<select name="location">${LOCATIONS.map((l) => `<option value="${l.id}">${l.label}</option>`).join('')}</select></label>
-            <label>상태<select name="status">${STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('')}</select></label>
-            <label>수량(선택)<input name="quantity" type="number" min="0" step="any" /></label>
-            <label>단위<input name="unit" maxlength="12" placeholder="개" /></label>
-          </div>
-          <button type="submit" class="primary block">재고 등록</button>
-        </form>`;
+        }`;
+    const listHtml = groups.length
+      ? groups
+          .map(
+            (g) => `<section class="inv-group" data-inv-group="${esc(g.id)}">
+              <h3 class="inv-group-title">${esc(g.label)} <span class="inv-group-count">${g.items.length}</span></h3>
+              <ul class="inv-list compact" data-inv-compact>${g.items.map((item) => inventoryRow(item)).join('')}</ul>
+            </section>`,
+          )
+          .join('')
+      : '<p class="empty">맞는 재고가 없어요.</p>';
     return `
       <div class="inv-screen" data-inv-screen>
       <section class="panel inv-panel" data-inv-list-panel>
         <div class="inv-toolbar" role="search">
-          <input type="search" name="inv-query" value="${esc(invQuery)}" placeholder="검색" maxlength="40" autocomplete="off" aria-label="재고 검색" />
-          <select name="inv-location" aria-label="위치 필터">
-            <option value="all" ${invFilterLocation === 'all' ? 'selected' : ''}>위치</option>
-            ${LOCATIONS.map(
-              (l) =>
-                `<option value="${l.id}" ${invFilterLocation === l.id ? 'selected' : ''}>${esc(locationLabel(l.id))}</option>`,
-            ).join('')}
-          </select>
-          <select name="inv-status" aria-label="상태 필터">
-            <option value="all" ${invFilterStatus === 'all' ? 'selected' : ''}>상태</option>
-            ${STATUSES.map(
-              (s) =>
-                `<option value="${s.id}" ${invFilterStatus === s.id ? 'selected' : ''}>${esc(INV_STATUS_SHORT[s.id] || s.label)}</option>`,
-            ).join('')}
-          </select>
-          <select name="inv-sort" aria-label="정렬">
-            <option value="name" ${invSort === 'name' ? 'selected' : ''}>이름순</option>
-            <option value="status" ${invSort === 'status' ? 'selected' : ''}>상태순</option>
-            <option value="location" ${invSort === 'location' ? 'selected' : ''}>위치순</option>
-            <option value="updated" ${invSort === 'updated' ? 'selected' : ''}>최근순</option>
-          </select>
-          <button type="button" class="secondary inv-tools-btn" data-act="inv-tools-toggle" aria-expanded="${toolsOpen ? 'true' : 'false'}" data-inv-tools-btn>${toolsOpen ? '닫기' : '등록'}</button>
+          <input type="search" name="inv-query" value="${esc(invQuery)}" placeholder="재료 검색" maxlength="40" autocomplete="off" aria-label="재고 검색" />
+          <button type="button" class="secondary inv-tools-btn" data-act="inv-tools-toggle" aria-expanded="${toolsOpen ? 'true' : 'false'}" data-inv-tools-btn>${toolsOpen ? '등록 닫기' : '재고 등록'}</button>
         </div>
         <p class="hint inv-count" data-inv-count>${filtered.length}개${
           filtered.length !== state.inventory.length ? ` · 전체 ${state.inventory.length}` : ''
         } · 눌러서 상세</p>
-        ${
-          filtered.length
-            ? `<ul class="inv-list compact" data-inv-compact>${filtered.map((item) => inventoryRow(item)).join('')}</ul>`
-            : '<p class="empty">맞는 재고가 없어요.</p>'
-        }
+        ${toolsOpen ? `<div class="inv-tools-body" data-inv-tools>${toolsBody}</div>` : ''}
+        ${listHtml}
       </section>
-      ${toolsOpen ? `<section class="panel inv-tools-body" data-inv-tools>${toolsBody}</section>` : ''}
       </div>`;
   }
 
@@ -1361,26 +1343,24 @@ export function createApp(root) {
     const open = expandedInventoryId === item.id;
     const detailId = `inv-detail-${item.id}`;
     const st = statusLabel(item.status);
-    const loc = locationLabel(item.location);
-    const qtyLine =
-      item.quantity != null
-        ? `${item.quantity}${esc(item.unit || '')} · ${esc(catLabel(item.category))}`
-        : `수량 미확인 · ${esc(catLabel(item.category))}`;
+    const title = formatInventoryNameQty(item);
+    const meta = esc(catLabel(item.category));
     return `<li class="inv-row compact ${open ? 'open' : ''}" data-status="${esc(item.status)}" data-id="${esc(item.id)}">
       <button type="button" class="inv-summary" data-act="inv-toggle" data-id="${esc(item.id)}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${detailId}">
-        <span class="inv-name">${esc(item.name)}</span>
-        <span class="inv-loc">${esc(loc)}</span>
+        <span class="inv-name">${esc(title)}</span>
         <span class="inv-status" data-status="${esc(item.status)}">${esc(st)}</span>
       </button>
       <div class="inv-detail" id="${detailId}" ${open ? '' : 'hidden'}>
-        <p class="inv-qty"><small>${qtyLine}</small></p>
+        <p class="inv-qty"><small>${meta}${
+          item.quantity == null ? ' · 수량 미확인' : ''
+        }</small></p>
         <div class="status-chips inv-status-chips" role="group" aria-label="${esc(item.name)} 상태">${STATUSES.map(
           (s) =>
             `<button type="button" class="${item.status === s.id ? 'on' : ''}" data-act="inv-status" data-id="${item.id}" data-status="${s.id}" aria-pressed="${item.status === s.id ? 'true' : 'false'}">${esc(INV_STATUS_SHORT[s.id] || s.label)}</button>`,
         ).join('')}</div>
-        <div class="row-actions">
-          <button type="button" class="secondary" data-act="inv-edit" data-id="${item.id}">수정</button>
-          <button type="button" class="ghost danger" data-act="inv-delete" data-id="${item.id}">삭제</button>
+        <div class="row-actions inv-detail-actions">
+          <button type="button" class="icon" data-act="inv-edit" data-id="${item.id}" aria-label="수정">✎</button>
+          <button type="button" class="icon danger" data-act="inv-delete" data-id="${item.id}" aria-label="삭제">✕</button>
         </div>
       </div>
     </li>`;
@@ -2190,6 +2170,7 @@ export function createApp(root) {
         try {
           const fd = Object.fromEntries(new FormData(addInv));
           delete fd.category; // inferred from name
+          invToolsOpen = true;
           commit((s) => {
             s.inventory.push(createInventoryItem(fd));
           }, '재고를 등록했어요.');
@@ -2201,8 +2182,17 @@ export function createApp(root) {
     const invToolsToggle = root.querySelector('[data-act=inv-tools-toggle]');
     if (invToolsToggle) {
       invToolsToggle.onclick = () => {
-        invToolsOpen = !invToolsToggle.matches('[aria-expanded="true"]');
+        const opening = invToolsToggle.getAttribute('aria-expanded') !== 'true';
+        invToolsOpen = opening;
         render();
+        if (opening) {
+          requestAnimationFrame(() => {
+            const panel = root.querySelector('[data-inv-tools]');
+            const nameInput = root.querySelector('[data-form=add-inventory] [name=name]');
+            panel?.scrollIntoView?.({ block: 'nearest' });
+            nameInput?.focus?.();
+          });
+        }
       };
     }
     const invQueryInput = root.querySelector('[name=inv-query]');
@@ -2218,14 +2208,6 @@ export function createApp(root) {
         }
       };
     }
-    root.querySelectorAll('[name=inv-location], [name=inv-status], [name=inv-sort]').forEach((el) => {
-      el.onchange = () => {
-        if (el.name === 'inv-location') invFilterLocation = el.value;
-        if (el.name === 'inv-status') invFilterStatus = el.value;
-        if (el.name === 'inv-sort') invSort = el.value;
-        render();
-      };
-    });
     root.querySelectorAll('[data-act=inv-toggle]').forEach((el) => {
       el.onclick = () => {
         const id = el.dataset.id;

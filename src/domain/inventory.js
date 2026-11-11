@@ -127,6 +127,10 @@ export function shoppingSuggestionsFromInventory(state, list) {
     }));
 }
 
+/**
+ * Purchase-complete → inventory only. Always lands as 충분 unless caller
+ * passes another suggestedStatus. Does not run when merely adding to shopping.
+ */
 export function applyPurchaseToInventory(state, proposal, { accept }) {
   if (!accept) return null;
   return upsertInventory(state, {

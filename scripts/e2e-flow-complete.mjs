@@ -51,13 +51,12 @@ if (await defer.count()) {
 await page.locator('[data-nav="food"]').first().click();
 await page.waitForSelector('[data-nav="food"][data-segment="inventory"]', { timeout: 5000 });
 await page.locator('[data-nav="food"][data-segment="inventory"]').first().click();
-await page.waitForSelector('[data-form="add-inventory"]', { timeout: 5000 });
+await page.waitForSelector('[data-act=inv-tools-toggle]', { timeout: 5000 });
 {
   const toolsBtn = page.locator('[data-act=inv-tools-toggle]');
-  if ((await toolsBtn.count()) && (await toolsBtn.getAttribute('aria-expanded')) !== 'true') {
-    await toolsBtn.click();
-  }
+  if ((await toolsBtn.getAttribute('aria-expanded')) !== 'true') await toolsBtn.click();
 }
+await page.waitForSelector('[data-form="add-inventory"]', { timeout: 5000 });
 await page.fill('[data-form="add-inventory"] [name="name"]', '간장');
 await page.selectOption('[data-form="add-inventory"] [name="location"]', 'pantry');
 await page.selectOption('[data-form="add-inventory"] [name="status"]', 'out');
