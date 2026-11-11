@@ -33,7 +33,14 @@
 - 추가: `ARCHITECTURE.md`, `DESIGN_SYSTEM.md`, 본 파일. 보완: DECISIONS, PROJECT_GUIDE, README, AGENTS, PRODUCT_DIRECTION, SUPABASE_SETUP, AI/Proposal 문구.
 - 브랜치: `cursor/docs-restore-c704` (병합은 사용자 승인 후).
 
+## 2026-11-11 — sandbox 격리 · sync 체크리스트 (P1 3·4)
+
+- `?sandbox&device=` → `src/lib/storageScope.js`가 state·defer-auth·auth·cloud cache·update flag 키 접두사 격리.
+- 수동/자동화 표: `docs/SYNC_E2E_CHECKLIST.md`. 운영 공용 계정 E2E는 미실시(정책).
+- CI live QA(A열)는 기존 격리 계정으로 유지.
+
 ## 확인하지 않은 것
 
 - 과거 Cursor Canvas 「A형 방향 재검토」「시안 A/B/C」원본 — 이 저장소·현재 Agent에 없음 (**확인 불가**).
 - Haze Flow 저장소 내용 — 접근하지 않음.
+- Sync 체크리스트 B열(브라우저 2·sandbox 레인 수동).

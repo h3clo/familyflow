@@ -1,8 +1,14 @@
-const KEY = 'familyflow-v1';
+import { scopedStorageKey } from './storageScope.js';
+
+const STATE_BASE = 'familyflow-v1';
+
+function stateKey() {
+  return scopedStorageKey(STATE_BASE);
+}
 
 export function loadState() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(stateKey());
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {
@@ -11,9 +17,14 @@ export function loadState() {
 }
 
 export function saveState(state) {
-  localStorage.setItem(KEY, JSON.stringify(state));
+  localStorage.setItem(stateKey(), JSON.stringify(state));
 }
 
 export function clearState() {
-  localStorage.removeItem(KEY);
+  localStorage.removeItem(stateKey());
+}
+
+/** Base key without sandbox prefix (tests / docs). */
+export function deviceStateBaseKey() {
+  return STATE_BASE;
 }

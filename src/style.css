@@ -271,6 +271,26 @@ select option {
   background: var(--card);
   color: var(--muted);
 }
+.sandbox-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px dashed #94a3b8;
+  background: #f1f5f9;
+  color: #334155;
+  white-space: nowrap;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sandbox-badge.on-media {
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(15, 23, 42, 0.45);
+  color: #f8fafc;
+  backdrop-filter: blur(6px);
+}
 .sync-badge.sync-ok { color: var(--ok); border-color: #b7ddd9; background: #eefaf8; }
 .sync-badge.sync-syncing { color: #334155; border-color: #cbd5e1; }
 .sync-badge.sync-error { color: var(--danger); border-color: #e0b4b4; background: #fbf0f0; }

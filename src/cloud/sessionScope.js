@@ -1,16 +1,31 @@
 /**
  * Prevent mixing data across accounts / households.
  * Device-local (pre-cloud) backup stays on a fixed key; cloud cache is scoped.
+ * With `?sandbox&device=…`, all keys are further prefixed (see storageScope.js).
  */
 
 import { loadState as loadRaw, saveState as saveRaw } from '../lib/storage.js';
+import { scopedStorageKey } from '../lib/storageScope.js';
 
-export const DEVICE_LOCAL_KEY = 'familyflow-v1';
-export const DEVICE_BACKUP_KEY = 'familyflow-device-local-backup';
+const DEVICE_LOCAL_BASE = 'familyflow-v1';
+const DEVICE_BACKUP_BASE = 'familyflow-device-local-backup';
+
+/** @deprecated Prefer deviceLocalKey() — kept for callers that need the base name. */
+export const DEVICE_LOCAL_KEY = DEVICE_LOCAL_BASE;
+/** @deprecated Prefer deviceBackupKey() */
+export const DEVICE_BACKUP_KEY = DEVICE_BACKUP_BASE;
+
+export function deviceLocalKey() {
+  return scopedStorageKey(DEVICE_LOCAL_BASE);
+}
+
+export function deviceBackupKey() {
+  return scopedStorageKey(DEVICE_BACKUP_BASE);
+}
 
 export function cloudCacheKey(userId, householdId) {
   if (!userId || !householdId) return null;
-  return `familyflow-cache:${userId}:${householdId}`;
+  return scopedStorageKey(`familyflow-cache:${userId}:${householdId}`);
 }
 
 export function readJson(key) {
@@ -33,13 +48,14 @@ export function removeJson(key) {
 
 /** Snapshot current device-local state before binding to cloud (once). */
 export function ensureDeviceLocalBackup(state) {
-  if (readJson(DEVICE_BACKUP_KEY)) return false;
-  writeJson(DEVICE_BACKUP_KEY, state);
+  const backupKey = deviceBackupKey();
+  if (readJson(backupKey)) return false;
+  writeJson(backupKey, state);
   return true;
 }
 
 export function loadDeviceLocalBackup() {
-  return readJson(DEVICE_BACKUP_KEY);
+  return readJson(deviceBackupKey());
 }
 
 export function loadScopedState(userId, householdId) {
@@ -55,7 +71,7 @@ export function saveScopedState(userId, householdId, state) {
     return;
   }
   writeJson(key, state);
-  // Keep DEVICE_LOCAL_KEY as a mirror while cloud-primary for refresh survival,
+  // Keep device mirror while cloud-primary for refresh survival,
   // but stamp scope so boot can detect mismatch.
   const stamped = {
     ...state,
@@ -70,8 +86,8 @@ export function saveScopedState(userId, householdId, state) {
 }
 
 export function clearActiveDeviceMirror() {
-  // Do not wipe DEVICE_BACKUP_KEY — that is the pre-cloud personal copy.
-  removeJson(DEVICE_LOCAL_KEY);
+  // Do not wipe device backup — that is the pre-cloud personal copy.
+  removeJson(deviceLocalKey());
 }
 
 /**

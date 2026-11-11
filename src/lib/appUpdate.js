@@ -4,8 +4,13 @@
  */
 
 import { APP_BUILD_ID } from './buildId.js';
+import { scopedStorageKey } from './storageScope.js';
 
-const FLAG = 'familyflow-updating-to';
+const FLAG_BASE = 'familyflow-updating-to';
+
+function updateFlagKey() {
+  return scopedStorageKey(FLAG_BASE);
+}
 
 export function shouldApplyRemoteBuild(localId, remoteId) {
   if (!localId || !remoteId) return false;
@@ -56,8 +61,9 @@ export async function checkForAppUpdate(options = {}) {
     const remoteId = await fetchRemoteBuildId(baseUrl, fetchImpl);
     if (!shouldApplyRemoteBuild(localId, remoteId)) return 'current';
 
-    if (storage?.getItem(FLAG) === remoteId) return 'skipped';
-    storage?.setItem(FLAG, remoteId);
+    const flag = updateFlagKey();
+    if (storage?.getItem(flag) === remoteId) return 'skipped';
+    storage?.setItem(flag, remoteId);
 
     await clear();
     reload();

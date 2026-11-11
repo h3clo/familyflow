@@ -5,11 +5,11 @@
 
 ## 현재 시작점 (2026-11-11 Asia/Seoul)
 
-**방금 완료:** 저녁 히어로를 패턴×소스 **프리베이크 JPG**로 전환 · 소스 카탈로그 정리(넛맥 포함).
+**방금 완료:** `?sandbox&device=` 저장 격리 구현 · 실계정/다기기 sync 점검 체크리스트(`docs/SYNC_E2E_CHECKLIST.md`). CI live QA(A열)는 기존처럼 격리 계정으로 통과 기록.
 
-**지금 작업:** _(대기열 P1 중 승인된 항목)_
+**지금 작업:** _(없음 — P1 sandbox/sync 점검 문서화 완료)_
 
-**다음 행동 (한 가지):** 실계정 동기화 E2E(격리 계정) 또는 sandbox URL 격리 구현 중 승인된 항목.
+**다음 행동 (한 가지):** 체크리스트 B열(브라우저 2·sandbox 레인) 수동 1회, 또는 P1-3 설계(취향 필드 / 한 끼 예산 배지) 중 승인된 항목.
 
 작업 기준 브랜치: 평소 `main`.  
 배포: https://h3clo.github.io/familyflow/
@@ -21,28 +21,28 @@
 | S1–S5-B · AI failover · auth-first | 배포 | 기존 문서 |
 | 클라우드 자동 연결 | 배포 | PR #10 |
 | Dinner ranking v2 · 확인 후 재고 등록 | 배포 | PR #11 |
+| 샤브·스타터 단백질·사진 단위 바꾸기 | 배포 | PR #38 |
 | UI/비주얼(토큰 미확정) | 배포 | dinner 에셋 |
-| Pages SW 캐시 | 배포 | #18 network-first · PWA `build.json` 자동 갱신 (홈화면 웹앱) |
+| Pages SW 캐시 | 배포 | #18 network-first · PWA `build.json` 자동 갱신 |
+| `?sandbox&device=` 저장 격리 | 코드 | `src/lib/storageScope.js` |
 
 ## 검증됨 vs 미검증
 
-### 검증됨 (Pages · 격리 브라우저 프로필 · 2026-11-11)
-- 인증 게이트 · 「잠깐 둘러보기」 → 로컬 배지
-- 저녁 추천(재고 미확인 칩) · 다른 후보로 바꾸기
-- 재고 등록 폼(상태/위치 비움) · 취소 시 inventory 불변 · 부족함/냉동실 승인 저장
-- 장보기 직접 입력 추가 · 체크 · 새로고침 후 로컬 유지
-- PR #12: `docs/PROJECT_GUIDE.md`만 변경 · CI SUCCESS · 병합 `7d126f5`
+### 검증됨
+- 단위 테스트 · Pages 스모크(격리 프로필) — 기존 기록
+- CI **live-supabase-qa** (격리 QA 계정 push/pull·RLS) — Actions
+- sandbox 키 접두사 단위 테스트 (`tests/storage-scope.test.js`)
 
 ### 미검증
-- **실계정 로그인** 및 **클라우드 push/pull·다기기 sync** (운영 데이터 보호로 미실시)
-- 신규 실계정 가입 E2E
-- `?sandbox&device=` URL 격리(AGENTS 언급 · **코드 미구현** — 이번엔 fresh userDataDir로 대체)
+- **운영 공용 계정** 로그인·다기기 (의도적 미실시)
+- 체크리스트 **B열** 수동 브라우저 2대 E2E
+- 신규 실계정 가입 E2E(운영)
 - 최종 비주얼 토큰 동결
 - computerUse GUI 영상 스모크
 
 ## 현재 승인된 결정
 
-포인터 — [DECISIONS.md](DECISIONS.md): ActionProposal, auth-first, 홈 저녁 §6.1 · ranking v2.  
+포인터 — [DECISIONS.md](DECISIONS.md): ActionProposal, auth-first, 홈 저녁 §6.1 · ranking v2 · sandbox URL 격리.
 비주얼 팔레트·타이포 **미확정**.
 
 ## 작업 대기열
@@ -51,8 +51,8 @@
 _(비어 있음)_
 
 ### P1 (다음 개발 후보 — 승인 후)
-1. 실계정·다기기 동기화 점검 체크리스트/수정
-2. 테스트용 `?sandbox&device=`(또는 동등) 저장 키 격리 구현
+1. ~~실계정·다기기 동기화 점검 체크리스트/수정~~ → 체크리스트 추가 · B열 수동은 미검증
+2. ~~테스트용 `?sandbox&device=` 저장 키 격리~~ → 구현
 3. 가족 취향 전용 필드 **또는** 한 끼 예산 배지(장보기 총액과 분리) — 설계만 먼저
 
 ### P2
@@ -64,7 +64,7 @@ _(비어 있음)_
 - [아키텍처](ARCHITECTURE.md) · [디자인 원칙/미확정](DESIGN_SYSTEM.md) · [인계 이력](handoff-history.md)
 - [제품 방향](PRODUCT_DIRECTION.md) · [결정 로그](DECISIONS.md)
 - [ActionProposal](ACTION_PROPOSAL.md) · [AI Provider](AI_PROVIDER.md) · [AI Failover](AI_FAILOVER.md)
-- [Supabase 설정](SUPABASE_SETUP.md) · [S5-B Sync](S5B_SYNC.md)
+- [Supabase 설정](SUPABASE_SETUP.md) · [S5-B Sync](S5B_SYNC.md) · [Sync E2E 체크리스트](SYNC_E2E_CHECKLIST.md)
 
 ## 작업 종료 시 갱신 규칙
 
