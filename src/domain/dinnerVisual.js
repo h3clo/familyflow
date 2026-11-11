@@ -12,6 +12,8 @@ const SHABU_RE = /샤브/;
 /** sauce visualKey or name → file stem under public/dinner/ */
 const SAUCE_KEYS = [
   { match: /부추/, key: 'buchujang' },
+  // More specific before bare 참깨 (찜 「참깨 간장」≠ 샤브 「참깨」).
+  { match: /참깨\s*간장|깨\s*간장/, key: 'sesame-soy' },
   { match: /참깨/, key: 'sesame' },
   { match: /겨자\s*간장/, key: 'mustard-soy' },
   { match: /스리라차/, key: 'sriracha' },
@@ -24,6 +26,34 @@ const SAUCE_KEYS = [
   // garlic-soy shared by 찜「마늘 간장」and 구이「간장마늘」
   { match: /마늘\s*간장|간장\s*마늘|마늘간장|간장마늘/, key: 'garlic-soy' },
 ];
+
+/** Known prebaked heroes — unknown stems fall back to pattern-only JPG. */
+const PREBAKED_FILES = new Set([
+  'steam.jpg',
+  'steam-buchujang.jpg',
+  'steam-garlic-soy.jpg',
+  'steam-sriracha.jpg',
+  'steam-sesame-soy.jpg',
+  'steam-mustard-soy.jpg',
+  'roast.jpg',
+  'roast-garlic-soy.jpg',
+  'roast-tomato-onion.jpg',
+  'roast-lamb-skewer.jpg',
+  'roast-honey-mustard.jpg',
+  'roast-nutmeg.jpg',
+  'shabu.jpg',
+  'shabu-sesame.jpg',
+  'shabu-ponzu.jpg',
+]);
+
+/** @param {string|null|undefined} imageSrc */
+export function dinnerImageFile(imageSrc) {
+  const raw = String(imageSrc || '');
+  if (!raw) return '';
+  const path = raw.split('?')[0];
+  const file = path.split('/').pop() || '';
+  return file;
+}
 
 /**
  * @param {object} state
@@ -95,12 +125,14 @@ function prebakedAsset(patternName, method, visualKey) {
           ? 'roast'
           : null;
   if (!kind) return null;
+  let file = `${kind}.jpg`;
   if (visualKey) {
-    // Steam/roast sesame sauces historically used sesame-soy filename.
-    if ((kind === 'steam' || kind === 'roast') && visualKey === 'sesame') {
-      return `${kind}-sesame-soy.jpg`;
-    }
-    return `${kind}-${visualKey}.jpg`;
+    // Normalize sesame keys onto files that exist per pattern.
+    let key = visualKey;
+    if (key === 'sesame' && (kind === 'steam' || kind === 'roast')) key = 'sesame-soy';
+    if (key === 'sesame-soy' && kind === 'shabu') key = 'sesame';
+    file = `${kind}-${key}.jpg`;
   }
-  return `${kind}.jpg`;
+  if (!PREBAKED_FILES.has(file)) return `${kind}.jpg`;
+  return file;
 }

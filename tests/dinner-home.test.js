@@ -5,6 +5,7 @@ import {
   formatDinnerOfferTitle,
   listDinnerCandidates,
   uniqueByPatternSauce,
+  uniqueDinnerSwapList,
   STARTER_PROTEINS,
 } from '../src/domain/dinnerHome.js';
 import { resolveDinnerVisual } from '../src/domain/dinnerVisual.js';
@@ -119,17 +120,38 @@ test('roast/steam catalogs expose garlic sauces for chicken stock', () => {
 
 test('starter swap list is unique pattern×sauce photos including shabu', () => {
   const state = seedState(createEmptyState());
-  const swap = uniqueByPatternSauce(listDinnerCandidates(state));
-  const files = new Set(
-    swap.map((c) => (resolveDinnerVisual(state, c).imageSrc || '').replace(/\?.*$/, '').split('/').pop()),
+  const swap = uniqueDinnerSwapList(state, listDinnerCandidates(state));
+  const files = swap.map(
+    (c) => (resolveDinnerVisual(state, c).imageSrc || '').replace(/\?.*$/, '').split('/').pop(),
   );
-  assert.ok(files.size >= 10, `expected many prebakes in rotation, got ${[...files]}`);
-  assert.ok([...files].some((f) => f.startsWith('shabu')));
+  assert.equal(files.length, new Set(files).size, `duplicate hero files in swap: ${files}`);
+  assert.ok(files.length >= 10, `expected many prebakes in rotation, got ${files}`);
+  assert.ok(files.some((f) => f.startsWith('shabu')));
   assert.ok(swap.some((c) => c.patternName === '샤브샤브'));
   assert.ok(swap.every((c) => c.title === c.patternName));
   assert.deepEqual(
     STARTER_PROTEINS,
     ['닭다리살', '연어', '고등어', '우삼겹', '대패삼겹살', '목살'],
+  );
+});
+
+test('swap does not collapse unrelated patterns onto sauces[0]', () => {
+  const state = baseState([{ id: 'i1', name: '목살', status: 'enough' }]);
+  // Mimic broken catalog: sauces exist but forPatterns empty → old code used sauces[0].
+  state.sauces = [
+    { id: 's-bad', name: '부추장', forPatterns: [], visualKey: 'buchujang' },
+    { id: 's-ok', name: '간장마늘 양념', forPatterns: ['야채구이'], visualKey: 'garlic-soy' },
+  ];
+  state.cookingPatterns = [
+    { id: 'p-roast', name: '야채구이', method: 'roast', effort: 'medium' },
+    { id: 'p-steam', name: '야채찜', method: 'steam', effort: 'medium' },
+  ];
+  const list = listDinnerCandidates(state);
+  assert.ok(list.some((c) => c.patternName === '야채구이' && c.sauceName === '간장마늘 양념'));
+  assert.ok(list.some((c) => c.patternName === '야채찜' && !c.sauceName));
+  assert.equal(
+    list.some((c) => c.patternName === '야채구이' && c.sauceName === '부추장'),
+    false,
   );
 });
 

@@ -95,10 +95,16 @@ export function scoreDinnerCandidate(candidate, prefs = {}) {
   };
 }
 
-/** Stable sort: higher total first; tie-break by title. */
+/** Stable sort: higher total first; tie-break pattern → sauce → protein → title. */
 export function compareDinnerScores(a, b) {
   const diff = (b.score?.total ?? 0) - (a.score?.total ?? 0);
   if (Math.abs(diff) > 1e-9) return diff > 0 ? 1 : -1;
+  const byPattern = String(a.patternName || '').localeCompare(String(b.patternName || ''), 'ko');
+  if (byPattern) return byPattern;
+  const bySauce = String(a.sauceName || '').localeCompare(String(b.sauceName || ''), 'ko');
+  if (bySauce) return bySauce;
+  const byProtein = String(a.protein || '').localeCompare(String(b.protein || ''), 'ko');
+  if (byProtein) return byProtein;
   return String(a.title || '').localeCompare(String(b.title || ''), 'ko');
 }
 

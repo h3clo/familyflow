@@ -9,6 +9,7 @@ import {
   scoreDinnerCandidate,
   compareDinnerScores,
 } from './dinnerRank.js';
+import { resolveDinnerVisual, dinnerImageFile } from './dinnerVisual.js';
 
 const PROTEIN_RE =
   /닭다리|닭고기|닭|우삼겹|대패|목살|삼겹|돼지|소고기|연어|고등어|삼치|두부|고기|계란|달걀/;
@@ -69,8 +70,8 @@ export function buildDinnerHomeOffer(state, opts = {}) {
   }
 
   const ranked = listDinnerCandidates(state);
-  // 「바꾸기」는 히어로 사진(패턴×소스) 단위 — 같은 사진에 단백질만 다른 행은 접는다.
-  const candidates = uniqueByPatternSauce(ranked);
+  // 「바꾸기」는 히어로 사진 단위 — 패턴×소스 접은 뒤, 같은 JPG로 떨어지는 후보도 제거.
+  const candidates = uniqueDinnerSwapList(state, ranked);
   if (!candidates.length) {
     return {
       status: 'empty',
@@ -266,11 +267,13 @@ export function listDinnerCandidates(state) {
         ? sauces.filter((s) => (s.forPatterns || []).includes(pattern.name))
         : [];
       const preferred = pickPreferredSauce(saucePool, source.name);
+      // Never fall back to sauces[0] (e.g. 부추장) for unrelated patterns —
+      // that collapsed swap photos onto one sauce and 404 prebakes (roast-buchujang).
       const sauceChoices = saucePool.length
         ? preferred
           ? [preferred, ...saucePool.filter((s) => s.id !== preferred.id)]
           : saucePool
-        : [sauces[0] || null];
+        : [null];
 
       for (const sauce of sauceChoices) {
         const recent = recentProteins.has(normalize(source.name));
@@ -365,6 +368,26 @@ export function uniqueByPatternSauce(candidates) {
     if (!prev || betterPatternPairing(c, prev)) seen.set(key, c);
   }
   return [...seen.values()].sort(compareDinnerScores);
+}
+
+/**
+ * Home 「바꾸기」 list: one row per distinct hero JPG.
+ * Pattern×sauce first, then drop rows that resolve to an already-seen file
+ * (so the button always changes the photo).
+ */
+export function uniqueDinnerSwapList(state, candidates) {
+  const byPatternSauce = uniqueByPatternSauce(candidates);
+  const seenFile = new Set();
+  const out = [];
+  for (const c of byPatternSauce) {
+    const file = dinnerImageFile(resolveDinnerVisual(state, c).imageSrc);
+    if (file) {
+      if (seenFile.has(file)) continue;
+      seenFile.add(file);
+    }
+    out.push(c);
+  }
+  return out.sort(compareDinnerScores);
 }
 
 function proteinFitScore(proteinName, patternName) {
