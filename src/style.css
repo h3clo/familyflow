@@ -812,6 +812,30 @@ details summary { cursor: pointer; font-weight: 700; }
   display: grid;
   gap: 8px;
 }
+.sauce-list {
+  gap: 12px;
+}
+.sauce-list > li {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.sauce-list > li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.sauce-list > li strong {
+  display: block;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.sauce-list > li small {
+  display: block;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
 .shop-row, .inv-list > li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

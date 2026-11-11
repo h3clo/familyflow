@@ -11,10 +11,14 @@ export { NAVER_PAY_HISTORY_URL };
 
 /** Status / chrome lines that mean “not a purchasable line”. */
 const SKIP_STATUS =
-  /^(반품환불완료|취소완료|반품정보|취소정보|내역 삭제|상세보기|판매자|정보\/문의|옵션 더보기|장바구니 담기|바로 구매하기|리뷰쓰기|리뷰쓰고|구매확정하고|무료교환반품|무료반품|배송지변경|영수증조회|반품요청|교환요청|한달사용리뷰|구매확정\s*\d|적립|다시 담기)/;
+  /^(반품환불완료|취소완료|반품정보|취소정보|내역 삭제|상세보기|판매자|정보\/문의|옵션 더보기|장바구니 담기|전체 상품 장바구니|바로 구매하기|리뷰쓰기|리뷰쓰고|구매확정하고|무료교환반품|무료반품|배송지변경|영수증조회|반품요청|교환요청|구매확정연장|한달사용리뷰|구매확정\s*\d|구매확정\(|적립|다시 담기|배송조회)/;
 
 const SKIP_LINE =
-  /^(본문으로 바로가기|NAVER|네이버페이|네이버$|사용자 링크|내 프로필|네이버톡|알림|메일|서비스 더보기|검색|카테고리|마이쇼핑|주문\/배송|찜한|최근 본|관심 스토어|정기구독|무료체험|상품 Q&A|네이버페이내역|검색어|검색창|페이 서비스|전체선택|현장결제|가맹점|예약·주문|결제한 상품|자주 산|중고로 팔기|자주 구매|자주구매|총 \d+건|주문 접기|주문 펼쳐보기|더보기$|이전|다음|처음|마지막|로그아웃|쇼핑&페이|약관|개인정보|신용정보|NAVER FINANCIAL|네이버파이낸셜|큐레이션|추천 더보기|지금 여기서만|추가적립|페이서비스|포인트|머니|송금|자산 관리|고객지원|사업자|페이지 중|현재\d|님을 위한|구매할 때 되셨나요|결제일시|주문 상세|포함 \d+건|배송비|판매가|할인율|즉시할인가|상품 명|상품 가격|도착 보장|AI 안내)/i;
+  /^(본문으로 바로가기|NAVER|네이버페이|네이버$|사용자 링크|내 프로필|네이버톡|알림|메일|서비스 더보기|검색|카테고리|마이쇼핑|주문\/배송|찜한|최근 본|관심 스토어|정기구독|무료체험|상품 Q&A|네이버페이내역|검색어|검색창|페이 서비스|전체선택|현장결제|가맹점|예약·주문|결제한 상품|자주 산|중고로 팔기|자주 구매|자주구매|총 \d+건|주문 접기|주문 펼쳐보기|더보기$|이전|다음|처음|마지막|로그아웃|쇼핑&페이|약관|개인정보|신용정보|NAVER FINANCIAL|네이버파이낸셜|큐레이션|추천 더보기|지금 여기서만|추가적립|페이서비스|포인트|머니|송금|자산 관리|고객지원|사업자|페이지 중|현재\d|님을 위한|구매할 때 되셨나요|결제일시|주문 상세|네이버페이주문|포함 \d+건|배송비|판매가|할인율|즉시할인가|상품 명|상품 가격|상품가격|상품주문번호|주문번호|주문상품|주문금액|상품금액|쿠폰할인|결제정보|배송지|배송지명|연락처|수령위치|출입방법|안내 보기|멤버십|패밀리 대표|결제 요청|문의하기|접기|펼치기|무료 배송|신용카드|일시불|충전결제|구매적립|리뷰적립|기본적립|도착 보장|AI 안내|옵션$|옵션명)/i;
+
+/** Order-detail chrome that must never become inventory/clarify rows. */
+const SKIP_DETAIL_CHROME =
+  /^(주문번호|멤버십|패밀리|주문상품|문의하기|상품가격|상품주문번호|옵션명|전체 상품|연락처|주소|수령|결제정보|주문금액|상품금액|쿠폰|안내 보기|신용카드|배송지|판매자|비씨\s*\d|총\s*[\d,]+원|상품명\s*$|옵션\s*$|접기|펼치기)/;
 
 /** Durables / fashion / samples — not household stock. */
 const SKIP_PRODUCT =
@@ -95,6 +99,22 @@ export function extractProductTitles(text) {
   /** @type {'ok'|'skip'} */
   let block = 'ok';
 
+  // Order-detail pages often repeat each item as 상품명… — prefer those when present.
+  const detailNames = lines
+    .filter((l) => /^상품명\s*/.test(l))
+    .map((l) => cleanTitleLine(l.replace(/^상품명\s*/, '')))
+    .filter((l) => l && l.length >= 2 && !SKIP_DETAIL_CHROME.test(l));
+
+  if (detailNames.length >= 1) {
+    for (const cleaned of detailNames) {
+      const dedupeKey = normalizeTitleKey(cleaned);
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      titles.push(cleaned);
+    }
+    return titles;
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
@@ -108,9 +128,10 @@ export function extractProductTitles(text) {
     }
 
     if (shouldSkipLine(line)) continue;
+    if (/^옵션명\s*:/.test(line)) continue; // duplicate of product title on detail pages
     if (/원$/.test(line) && !/[가-힣]{2,}/.test(line.replace(/[\d,원]/g, ''))) continue;
     if (/^\d{1,2}\.\s*\d{1,2}/.test(line) && /주문|결제/.test(line)) continue;
-    if (/배송|구매확정|결제완료|상품준비|새벽배송|내일배송|오늘배송/.test(line) && line.length < 40) {
+    if (/배송|구매확정|결제완료|상품준비|새벽배송|내일배송|오늘배송|KURLY\./i.test(line) && line.length < 80) {
       // status-only short lines
       if (!/\[[^\]]+\]/.test(line) && !/[가-힣]{4,}.*\d/.test(line)) continue;
     }
@@ -119,8 +140,8 @@ export function extractProductTitles(text) {
     if (/포함\s*\d+\s*건/.test(line) || (/총\s*\d+\s*건/.test(line) && /자세히/.test(line))) {
       if (block === 'skip') continue;
       const cleaned = cleanTitleLine(line.replace(/자세히 보기.*$/, '').replace(/총\d+건/, '').trim());
-      if (cleaned && !seen.has(cleaned)) {
-        seen.add(cleaned);
+      if (cleaned && !seen.has(normalizeTitleKey(cleaned))) {
+        seen.add(normalizeTitleKey(cleaned));
         titles.push(/포함/.test(cleaned) ? cleaned : `${cleaned} 포함 묶음`);
       }
       continue;
@@ -134,6 +155,7 @@ export function extractProductTitles(text) {
         line.length >= 4 &&
         line.length <= 120 &&
         !SKIP_STATUS.test(line) &&
+        !SKIP_DETAIL_CHROME.test(line) &&
         !/원$/.test(line));
 
     if (!looksProduct) continue;
@@ -141,9 +163,11 @@ export function extractProductTitles(text) {
 
     const cleaned = cleanTitleLine(line);
     if (!cleaned || cleaned.length < 2) continue;
-    if (seen.has(cleaned)) continue;
+    if (SKIP_DETAIL_CHROME.test(cleaned)) continue;
+    const dedupeKey = normalizeTitleKey(cleaned);
+    if (seen.has(dedupeKey)) continue;
 
-    seen.add(cleaned);
+    seen.add(dedupeKey);
     titles.push(cleaned);
   }
 
@@ -154,22 +178,36 @@ function shouldSkipLine(line) {
   if (!line) return true;
   if (SKIP_STATUS.test(line)) return true;
   if (SKIP_LINE.test(line)) return true;
+  if (SKIP_DETAIL_CHROME.test(line)) return true;
   if (/^\d{1,3}원$/.test(line)) return true;
   if (/^\d{1,3}(,?\d{3})+원$/.test(line)) return true;
   if (/최대\s*\+?\d+원/.test(line)) return true;
   if (/N번 구매했어요|번 구매했어요/.test(line)) return true;
   if (/자동 구매확정/.test(line)) return true;
   if (/카드 취소/.test(line)) return true;
+  if (/^\d{4}\.\d{1,2}\.\d{1,2}/.test(line)) return true; // date stamps on detail header
+  if (/^\*{2,}/.test(line) || /\*{3,}/.test(line)) return true;
+  if (/자유출입|문 앞|비밀번호/.test(line)) return true;
   return false;
 }
 
 function cleanTitleLine(line) {
   return String(line || '')
+    .replace(/^상품명\s*/u, '')
+    .replace(/^옵션명\s*:\s*/u, '')
     .replace(/자세히 보기.*$/u, '')
     .replace(/총\s*\d+\s*건.*$/u, '')
     .replace(/포함\s*\d+\s*건.*$/u, ' 포함 묶음')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** Dedupe key after stripping brand brackets / spaces. */
+function normalizeTitleKey(title) {
+  return String(title || '')
+    .replace(BRAND_BRACKET, '')
+    .replace(/\s+/g, '')
+    .toLowerCase();
 }
 
 /**
@@ -180,6 +218,9 @@ function cleanTitleLine(line) {
 export function normalizeOrderTitle(title) {
   let t = String(title || '').trim();
   if (!t) return null;
+  t = t.replace(/^상품명\s*/u, '').replace(/^옵션명\s*:\s*/u, '').trim();
+  if (!t) return null;
+  if (SKIP_DETAIL_CHROME.test(t) || SKIP_LINE.test(t) || SKIP_STATUS.test(t)) return null;
 
   const location = guessLocationFromTitle(t) || undefined;
 
@@ -421,10 +462,13 @@ export function normalizeOrderTitle(title) {
   {
     const name = canonicalName(stripToName(t));
     if (!name) return null;
+    if (SKIP_DETAIL_CHROME.test(name) || name.length < 2) return null;
     // Instant noodles / named snack with no qty → 1개
     if (/크뽕|라면|짬뽕|냉면|밀면|우동|나또|낫또/.test(name)) {
       return readyItem(name, 1, '개', title, location);
     }
+    // UI leftovers without a real grocery shape → drop (do not ask clarify spam)
+    if (!/[가-힣]{2,}/.test(name) || /원$|복사$|보기$/.test(name)) return null;
     return clarify(name, title, '용량·옵션이 제목에 없어요. 상세 옵션을 알려 주세요.', location);
   }
 }

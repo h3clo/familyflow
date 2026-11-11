@@ -105,6 +105,57 @@ test('parseOrderPaste skips cancelled blocks and durables', () => {
   assert.ok(skipped.some((s) => /마사지기|텀블러/.test(s)) || !ready.some((r) => /마사지기/.test(r.sourceText)));
 });
 
+test('order detail dump keeps real groceries only (no chrome clarify spam)', () => {
+  const text = `
+네이버페이주문 상세정보
+2026.11.11. 14:18:36
+주문번호2026111195348941영수증
+멤버십 전용 혜택
+패밀리 대표에게 결제 요청하기
+주문상품
+접기
+판매자명컬리N마트
+무료 배송
+문의하기
+배송완료
+오늘배송
+KURLY.CC02에서 11. 11.(수) 23:59까지 배송
+[KF365] 무항생제 달걀 XL(특란) 40구(20구＊2ea)
+상품명[KF365] 무항생제 달걀 XL(특란) 40구(20구＊2ea)
+옵션
+옵션명: [KF365] 무항생제 달걀 XL(특란) 40구(20구＊2ea)1개
+상품가격10,860원14,020
+상품주문번호 : 2026111135274881복사
+구매확정(최대 258원 적립)
+배송조회
+장바구니 담기
+배송완료
+상품명[연세우유 x 마켓컬리] 전용목장우유 1.8L
+옵션명: [연세우유 x 마켓컬리] 전용목장우유 1.8L1개
+상품가격5,200원5,280
+상품명[바름팜] 영암 꿀고구마 1kg(26년 햇)
+옵션명: [바름팜] 영암 꿀고구마 1kg1개 (-3,000원)
+상품명국산 미니 단호박 4~7입 1.5kg
+옵션명: 국산 미니 단호박 4~7입 1.5kg1개 (-2,000원)
+전체 상품 장바구니 담기
+배송지명이혜진(집)
+연락처010-2***-1***
+주소서울특별시 은평구 ***** (03471)보기
+결제정보
+신용카드(삼성페이)
+`;
+  const { ready, needsClarify, skipped } = parseOrderPaste(text);
+  void skipped;
+  const names = ready.map((r) => r.name).sort();
+  assert.deepEqual(names, ['달걀', '미니 단호박', '우유', '꿀고구마'].sort());
+  assert.equal(
+    needsClarify.length,
+    0,
+    `unexpected clarify: ${needsClarify.map((c) => c.name).join(', ')}`,
+  );
+  assert.ok(!ready.some((r) => /상품명|주문|멤버십|연락처|카드/.test(r.name)));
+});
+
 test('paste proposals apply to inventory via applyPurchaseToInventory', () => {
   const state = createEmptyState();
   const item = normalizeOrderTitle('[KF365] 무항생제 달걀 XL(특란) 40구(20구＊2ea)');
