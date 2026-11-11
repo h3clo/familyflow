@@ -281,9 +281,20 @@ function describeAndApplyOp(draft, { op, payload }) {
   if (op === 'shopping.add') {
     const name = String(payload.name || '').trim();
     if (!name) throw new ProposalError('장보기 품목 이름이 필요해요.');
-    const qty = Number(payload.quantity);
-    if (!Number.isFinite(qty) || qty <= 0) throw new ProposalError('장보기 수량을 확인해주세요.');
-    const unit = String(payload.unit || '개').trim() || '개';
+    // null/omitted/'' → 수량 미확인 (do not invent 1). Positive number required when set.
+    let quantity = null;
+    if (payload.quantity != null && payload.quantity !== '') {
+      quantity = Number(payload.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new ProposalError('장보기 수량을 확인해주세요.');
+      }
+    }
+    const unit =
+      payload.unit != null && String(payload.unit).trim()
+        ? String(payload.unit).trim()
+        : quantity == null
+          ? ''
+          : '개';
     const priority = payload.priority === 'nice' ? 'nice' : 'must';
     const category = normalizeCategory(payload.category);
 
@@ -296,14 +307,16 @@ function describeAndApplyOp(draft, { op, payload }) {
 
     addShoppingItem(list, {
       name,
-      quantity: qty,
+      quantity,
       unit,
       priority,
       category,
       inventoryId: payload.inventoryId || null,
       estimatedPrice: payload.estimatedPrice ?? null,
     });
-    return `장보기 추가: ${name} ${qty}${unit} (${priority === 'must' ? '필수' : '선택'})`;
+    const qtyLabel =
+      quantity == null ? '수량 미확인' : `${quantity}${unit || ''}`.trim();
+    return `장보기 추가: ${name} · ${qtyLabel} (${priority === 'must' ? '필수' : '선택'})`;
   }
 
   if (op === 'shopping.remove_unchecked') {

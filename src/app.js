@@ -1156,8 +1156,8 @@ export function createApp(root) {
       return `<li class="shop-row edit"><form data-form="edit-item" data-id="${item.id}">
         <input name="name" value="${esc(item.name)}" required maxlength="80" />
         <div class="form-grid compact">
-          <input name="quantity" type="number" min="0.1" step="any" value="${item.quantity}" aria-label="수량" />
-          <input name="unit" value="${esc(item.unit)}" maxlength="12" aria-label="단위" />
+          <input name="quantity" type="number" min="0.1" step="any" value="${item.quantity ?? ''}" placeholder="비우면 미확인" aria-label="수량" />
+          <input name="unit" value="${esc(item.unit || '')}" maxlength="12" aria-label="단위" />
           <select name="priority" aria-label="구분"><option value="must" ${item.priority === 'must' ? 'selected' : ''}>필수</option><option value="nice" ${item.priority === 'nice' ? 'selected' : ''}>선택</option></select>
           <select name="category" aria-label="분류">${categoryOptionsHtml(item.category)}</select>
           <input name="estimatedPrice" type="number" min="0" step="100" value="${item.estimatedPrice ?? ''}" placeholder="가격" aria-label="가격" />
@@ -1168,11 +1168,15 @@ export function createApp(root) {
         </div>
       </form></li>`;
     }
+    const qtyLabel =
+      item.quantity == null
+        ? '수량 미확인'
+        : `${item.quantity}${esc(item.unit || '')}`;
     return `<li class="shop-row ${item.checked ? 'done' : ''}">
       <label class="check">
         <input type="checkbox" data-act="toggle" data-id="${item.id}" ${item.checked ? 'checked' : ''} />
         <span class="body"><strong>${esc(item.name)}</strong>
-        <small>${item.quantity}${esc(item.unit)} · ${item.priority === 'must' ? '필수' : '선택'} · ${catLabel(item.category)}${item.estimatedPrice != null ? ` · ${won(item.estimatedPrice)}` : ''}</small></span>
+        <small>${qtyLabel} · ${item.priority === 'must' ? '필수' : '선택'} · ${catLabel(item.category)}${item.estimatedPrice != null ? ` · ${won(item.estimatedPrice)}` : ''}</small></span>
       </label>
       <div class="row-actions">
         <button type="button" class="icon" data-act="edit" data-id="${item.id}" aria-label="수정">✎</button>

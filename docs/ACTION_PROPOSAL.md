@@ -36,7 +36,7 @@
 
 | op | payload 요지 |
 | --- | --- |
-| `shopping.add` | `name`, `quantity`, `unit`, `priority`, `category`, optional `inventoryId`, `skipIfExists` |
+| `shopping.add` | `name`, `quantity` (양수 또는 **null**=수량 미확인), `unit`, `priority`, `category`, optional `inventoryId`, `skipIfExists` |
 | `shopping.remove_unchecked` | `name` (미체크 항목만 제거) |
 | `inventory.set_status` | `id`, `status` (`enough`/`low`/`out`/`unknown`) |
 | `inventory.upsert` | `name` + 재고 필드 |
