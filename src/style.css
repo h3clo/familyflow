@@ -863,32 +863,68 @@ details summary { cursor: pointer; font-weight: 700; }
 }
 .inv-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(0, 0.9fr)) auto;
-  gap: 5px;
-  margin-bottom: 4px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 6px;
   align-items: center;
 }
-.inv-toolbar input,
-.inv-toolbar select {
-  min-height: 36px;
+.inv-toolbar input[type='search'] {
+  min-height: 40px;
   width: 100%;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--line);
-  padding: 4px 6px;
+  padding: 6px 10px;
   font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.9rem;
   color: var(--ink);
   background: #fff;
 }
 .inv-tools-btn {
-  min-height: 36px;
-  padding: 4px 10px;
-  font-size: 0.78rem;
+  min-height: 40px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
   white-space: nowrap;
 }
-.inv-count { margin: 0 0 4px; font-size: 0.75rem; }
+.inv-count { margin: 0 0 8px; font-size: 0.75rem; }
 .inv-tools-body {
-  padding: 12px;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+.inv-group {
+  margin: 0 0 12px;
+}
+.inv-group:last-child { margin-bottom: 0; }
+.inv-group-title {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-weight: 750;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.inv-group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.inv-detail-actions {
+  gap: 6px;
+  justify-content: flex-start;
+}
+/* Match shared .icon size used on shopping rows — not full-width secondary buttons. */
+.inv-detail-actions .icon {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
 }
 .inv-list.compact {
   gap: 0;
@@ -911,7 +947,7 @@ details summary { cursor: pointer; font-weight: 700; }
   width: 100%;
   min-height: 44px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
   padding: 8px 10px;

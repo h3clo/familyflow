@@ -120,8 +120,9 @@ say('new_visible_collapsed_rows:', visible);
 if (visible <= PREV_VISIBLE_BASELINE) {
   throw new Error(`expected more than ${PREV_VISIBLE_BASELINE} visible rows, got ${visible}`);
 }
-if (visible < 12) {
-  throw new Error(`expected at least 12 visible compact rows at 390×844, got ${visible}`);
+// Location group headers cost vertical space; still require a clear gain vs cards.
+if (visible < 8) {
+  throw new Error(`expected at least 8 visible compact rows at 390×844, got ${visible}`);
 }
 
 // Expand first row via keyboard (focus + Enter)
