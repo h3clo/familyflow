@@ -258,6 +258,23 @@ export function listDinnerCandidates(state) {
         tracked: false,
       }));
 
+  // Few tracked proteins lock every 「바꾸기」 chip to the same 곁들임 — blend in starters.
+  if (confirmed.length > 0 && confirmed.length < 3) {
+    const seen = new Set(confirmed.map((i) => normalize(i.name)));
+    for (const name of STARTER_PROTEINS) {
+      const key = normalize(name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      proteinSources.push({
+        keyId: `starter-${key}`,
+        name,
+        inventoryId: null,
+        stockStatus: 'untracked',
+        tracked: false,
+      });
+    }
+  }
+
   const candidates = [];
 
   for (const source of proteinSources) {
@@ -388,18 +405,52 @@ export function uniqueByPatternSauce(candidates) {
 /**
  * Home 「바꾸기」 list: one row per distinct hero JPG, then interleaved so
  * consecutive taps change pattern (and look) instead of five similar roasts in a row.
+ * Also spreads 곁들임 proteins so one fish/meat does not stick on every photo.
  */
 export function uniqueDinnerSwapList(state, candidates) {
-  const byPatternSauce = uniqueByPatternSauce(candidates);
+  const groups = new Map();
+  for (const c of candidates || []) {
+    const key = `${c.patternId || c.patternName || ''}|${c.sauceId || c.sauceName || ''}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  }
+  for (const rows of groups.values()) {
+    rows.sort((a, b) => {
+      if (betterPatternPairing(a, b)) return -1;
+      if (betterPatternPairing(b, a)) return 1;
+      return compareDinnerScores(a, b);
+    });
+  }
+
+  const rankedKeys = [...groups.entries()]
+    .map(([key, rows]) => ({ key, best: rows[0] }))
+    .sort((a, b) => compareDinnerScores(a.best, b.best));
+
+  const proteinUse = new Map();
   const seenFile = new Set();
   const unique = [];
-  for (const c of byPatternSauce) {
-    const file = dinnerImageFile(resolveDinnerVisual(state, c).imageSrc);
+  for (const { key } of rankedKeys) {
+    const rows = groups.get(key) || [];
+    const top = rows.slice(0, 8);
+    top.sort((a, b) => {
+      const ua = proteinUse.get(normalize(a.protein)) || 0;
+      const ub = proteinUse.get(normalize(b.protein)) || 0;
+      if (ua !== ub) return ua - ub;
+      // Keep tracked stock visible in 바꾸기 even when status is low/out.
+      const aTrack = a.stockStatus !== 'untracked' && ua === 0 ? 0 : 1;
+      const bTrack = b.stockStatus !== 'untracked' && ub === 0 ? 0 : 1;
+      if (aTrack !== bTrack) return aTrack - bTrack;
+      return compareDinnerScores(a, b);
+    });
+    const pick = top[0];
+    if (!pick) continue;
+    const file = dinnerImageFile(resolveDinnerVisual(state, pick).imageSrc);
     if (file) {
       if (seenFile.has(file)) continue;
       seenFile.add(file);
     }
-    unique.push(c);
+    proteinUse.set(normalize(pick.protein), (proteinUse.get(normalize(pick.protein)) || 0) + 1);
+    unique.push(pick);
   }
   return diversifySwapOrder(unique);
 }

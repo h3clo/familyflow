@@ -1346,7 +1346,9 @@ export function createApp(root) {
         <ul class="sauce-list">${state.sauces
           .map(
             (s) =>
-              `<li><strong>${esc(s.name)}</strong><small>${s.components.map((c) => c.name + (c.prep ? `(${c.prep})` : '')).join(' · ')}${s.exactAmounts === false ? ' · 비율은 나중에' : ''}</small></li>`,
+              `<li><strong>${esc(s.name)}</strong><small>${s.components
+                .map((c) => esc(c.name) + (c.prep ? ` (${esc(c.prep)})` : ''))
+                .join(' · ')}${s.exactAmounts === false ? ' · 비율은 나중에' : ''}</small></li>`,
           )
           .join('')}</ul>
       </section>
