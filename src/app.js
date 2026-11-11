@@ -50,7 +50,7 @@ import {
 import { resolveDinnerVisual } from './domain/dinnerVisual.js';
 import { nextFoodAction, normalizeFoodNav } from './domain/foodHub.js';
 import { categoryLabel, categoryOptionsHtml } from './domain/categories.js';
-import { pinWindowTop } from './lib/scrollLock.js';
+import { currentScrollY, pinWindowTop, restoreScrollY } from './lib/scrollLock.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
 import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
 import { runConversationTurn } from './ai/conversation.js';
@@ -499,7 +499,8 @@ export function createApp(root) {
     else render();
   };
 
-  function render() {
+  function render({ resetScroll = false } = {}) {
+    const scrollY = resetScroll ? 0 : currentScrollY();
     const nav = normalizeFoodNav(state.settings.view || 'home', state.settings.foodSegment);
     state.settings.view = nav.view;
     state.settings.foodSegment = nav.foodSegment;
@@ -564,6 +565,10 @@ export function createApp(root) {
         ${pendingApproval ? approvalPanel(pendingApproval) : ''}
       </div>`;
     bind();
+    requestAnimationFrame(() => {
+      if (resetScroll) pinWindowTop({ force: true });
+      else restoreScrollY(scrollY);
+    });
     if (pendingApproval) {
       const sheet = root.querySelector('.approval-sheet');
       const focusEl = sheet?.querySelector('.primary, .ghost, [data-act]');
@@ -1574,9 +1579,8 @@ export function createApp(root) {
         state.settings.foodSegment = nav.foodSegment;
         editingId = null;
         persist(state);
-        render();
         // Tab changes should start at the top (iOS often keeps a phantom offset).
-        requestAnimationFrame(() => pinWindowTop({ force: true }));
+        render({ resetScroll: true });
       };
     });
 

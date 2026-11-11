@@ -80,14 +80,20 @@ export function watchAppUpdates() {
 
   run();
 
+  // Debounce return-to-app checks. Do NOT hook bare `focus` — copying from
+  // Naver Pay / Notes and returning would hard-reload mid inventory paste
+  // whenever a Pages deploy landed.
+  let timer = null;
+  const schedule = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(run, 1200);
+  };
+
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') run();
+    if (document.visibilityState === 'visible') schedule();
   });
 
   window.addEventListener('pageshow', (event) => {
-    if (event.persisted) run();
+    if (event.persisted) schedule();
   });
-
-  // Returning to a home-screen web app often fires focus.
-  window.addEventListener('focus', run);
 }

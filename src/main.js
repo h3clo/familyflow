@@ -23,12 +23,16 @@ if ('serviceWorker' in navigator) {
       .register(swUrl, { updateViaCache: 'none' })
       .then((reg) => {
         reg.update().catch(() => {});
-        // Pull updates when returning to the installed web app.
-        const poke = () => reg.update().catch(() => {});
+        // Pull updates when returning to the installed web app (not on every focus —
+        // focus fires when hopping to Naver Pay to copy an order).
+        let pokeTimer = null;
+        const poke = () => {
+          if (pokeTimer) clearTimeout(pokeTimer);
+          pokeTimer = setTimeout(() => reg.update().catch(() => {}), 1200);
+        };
         document.addEventListener('visibilitychange', () => {
           if (document.visibilityState === 'visible') poke();
         });
-        window.addEventListener('focus', poke);
       })
       .catch(() => {});
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { currentScrollY, pinWindowTop } from '../src/lib/scrollLock.js';
+import { currentScrollY, pinWindowTop, restoreScrollY } from '../src/lib/scrollLock.js';
 
 test('currentScrollY prefers window then document scroll tops', () => {
   globalThis.window = { scrollY: 0, pageYOffset: 0 };
@@ -45,4 +45,20 @@ test('pinWindowTop ignores large user scroll unless forced', () => {
   assert.equal(calls.length, 0);
   pinWindowTop({ force: true });
   assert.deepEqual(calls[0], [0, 0]);
+});
+
+test('restoreScrollY restores the previous window offset', () => {
+  const calls = [];
+  globalThis.window = {
+    scrollY: 0,
+    pageYOffset: 0,
+    scrollTo: (x, y) => calls.push([x, y]),
+  };
+  globalThis.document = {
+    documentElement: { scrollTop: 0 },
+    body: { scrollTop: 0 },
+  };
+  restoreScrollY(180);
+  assert.deepEqual(calls[0], [0, 180]);
+  assert.equal(document.documentElement.scrollTop, 180);
 });

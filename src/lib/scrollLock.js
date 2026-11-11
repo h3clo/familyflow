@@ -30,6 +30,17 @@ export function pinWindowTop({ force = false } = {}) {
   }
 }
 
+/** Keep the user's place after a full `#app` innerHTML re-render. */
+export function restoreScrollY(y) {
+  if (typeof window === 'undefined') return;
+  const top = Math.max(0, Number(y) || 0);
+  window.scrollTo(0, top);
+  if (typeof document !== 'undefined') {
+    document.documentElement.scrollTop = top;
+    document.body.scrollTop = top;
+  }
+}
+
 export function installScrollTopGuards() {
   if (typeof window === 'undefined') return () => {};
 
