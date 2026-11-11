@@ -91,7 +91,7 @@ export function resolveDinnerVisual(state, dinnerLike = {}) {
 }
 
 /** Bump when replacing public/dinner/*.jpg in place so SW/CDN drop old bytes. */
-const DINNER_ASSET_REV = '20261111g';
+const DINNER_ASSET_REV = '20261111h';
 
 function assetVersion() {
   const id = String(APP_BUILD_ID || '');
