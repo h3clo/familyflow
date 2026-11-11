@@ -39,7 +39,7 @@ export function nextFoodAction(state) {
     return {
       segment: 'meals',
       title: '오늘 저녁 후보가 있어요',
-      hint: '홈에서 이대로/바꾸기로 고르면 됩니다. 여기선 주간·소스만 정리해요.',
+      hint: '홈과 식단 「오늘」이 같은 후보예요. 확정은 홈에서 이대로로 해요.',
       cta: '식단 보기',
     };
   }

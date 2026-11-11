@@ -21,7 +21,12 @@ import {
   shoppingSuggestionsFromInventory,
   applyPurchaseToInventory,
 } from './domain/inventory.js';
-import { suggestToday, draftWeek } from './domain/meals.js';
+import {
+  draftWeek,
+  mealsTodayViewModel,
+  buildWeekShoppingProposal,
+  weekDinnerShortages,
+} from './domain/meals.js';
 import { parseQuickAdd } from './domain/quick-add.js';
 import {
   generateSuggestions,
@@ -1298,32 +1303,35 @@ export function createApp(root) {
   }
 
   function mealsView() {
-    const today = suggestToday(state, state.settings.todayFlags || {});
+    const dinnerHome = buildDinnerHomeOffer(state, { altIndex: 0 });
+    const today = mealsTodayViewModel(dinnerHome);
     const plan = state.mealPlan;
-    const dinner = state.todayDinner;
+    const weekNeeds = plan ? weekDinnerShortages(state) : [];
+    const todayMeta = dinnerMetaChips({
+      stockLabel: today.stockLabel,
+      sauceName: today.sauceName,
+      protein: today.protein,
+    });
+    const todayStatusLabel =
+      today.status === 'confirmed' ? '확정' : today.status === 'offer' ? '홈 후보 · 저장 전' : '추천 없음';
     return `
-      <p class="lede">지금은 <strong>저녁</strong>만 다뤄요. 야채찜·구이 + 소스 변형. 아침·점심 추천은 나중에.</p>
-      ${
-        dinner
-          ? `<section class="panel dinner-confirmed"><h2>홈에서 확정한 오늘 저녁</h2><p><strong>${esc(dinner.title)}</strong></p><small>${dinner.protein ? esc(dinner.protein) : ''}${dinner.sauceName ? ' · ' + esc(dinner.sauceName) : ''}</small></section>`
-          : ''
-      }
-      <section class="panel">
+      <p class="lede">지금은 <strong>저녁</strong>만 다뤄요. 오늘 저녁은 홈과 같은 상태예요. 아침·점심 추천은 나중에.</p>
+      <section class="panel" data-meals-today="${esc(today.status)}">
         <h2>오늘</h2>
-        <div class="meal-cards">${today.slots
-          .map(
-            (s) => `<article class="meal-card">
-            <p class="label">${mealLabel(s.mealType)}</p>
-            <h3>${esc(s.title)}</h3>
-            <p>${s.protein ? `${esc(s.protein)} · ` : ''}${s.sauce ? esc(s.sauce.name) : '소스 선택 자유'}</p>
-            <small>${esc(s.note || '')}</small>
-          </article>`,
-          )
-          .join('')}</div>
+        <article class="meal-card">
+          <p class="label">저녁 · ${esc(todayStatusLabel)}</p>
+          <h3>${esc(today.title)}</h3>
+          ${todayMeta}
+          <small>${esc(today.hint)}</small>
+        </article>
         <div class="row-actions wrap">
-          <button type="button" class="ghost" data-act="today-lazy">요리 귀찮음</button>
-          <button type="button" class="ghost" data-act="today-noshop">장보기 없이</button>
-          <button type="button" class="ghost" data-act="today-refresh">다른 조합</button>
+          ${
+            today.status === 'offer'
+              ? `<button type="button" class="primary" data-nav="home">홈에서 이대로 확정</button>`
+              : today.status === 'confirmed'
+                ? `<button type="button" class="ghost" data-nav="home">홈에서 보기</button>`
+                : `<button type="button" class="secondary" data-nav="home">홈 추천 보기</button>`
+          }
         </div>
       </section>
       <section class="panel">
@@ -1339,7 +1347,11 @@ export function createApp(root) {
         <h2>이번 주 초안</h2>
         ${
           plan
-            ? `<p class="hint">${esc(plan.weekStart)} 주 · ${plan.status === 'confirmed' ? '확정' : '초안'} · 장보기 자동 연결은 다음 단계</p>
+            ? `<p class="hint">${esc(plan.weekStart)} 주 · ${plan.status === 'confirmed' ? '확정' : '초안'}${
+                weekNeeds.length
+                  ? ` · 부족한 재료 ${weekNeeds.length}개 확인됨`
+                  : ' · 확인된 부족 재료 없음'
+              }</p>
             <ul class="week-list">${plan.days
               .map((d) => {
                 const dinner = d.slots.find((x) => x.mealType === 'dinner');
@@ -1348,6 +1360,11 @@ export function createApp(root) {
               .join('')}</ul>
             <div class="row-actions wrap">
               <button type="button" class="secondary" data-act="confirm-week" ${plan.status === 'confirmed' ? 'disabled' : ''}>주간 식단 확정</button>
+              ${
+                weekNeeds.length
+                  ? `<button type="button" class="primary" data-act="week-shop-needs">부족한 재료 장보기</button>`
+                  : ''
+              }
               <button type="button" class="ghost" data-act="draft-week">초안 다시</button>
             </div>`
             : `<button type="button" class="primary" data-act="draft-week">7일 초안 만들기</button>`
@@ -2124,36 +2141,45 @@ export function createApp(root) {
     });
 
     root.querySelectorAll('[data-act=draft-week]').forEach((el) => {
-      el.onclick = () => commit((s) => {
-        s.mealPlan = draftWeek(s);
-      }, '주간 초안을 만들었어요.');
+      el.onclick = () =>
+        commit((s) => {
+          s.mealPlan = draftWeek(s);
+        }, '주간 초안을 만들었어요.');
     });
     const confirmWeek = root.querySelector('[data-act=confirm-week]');
     if (confirmWeek) {
-      confirmWeek.onclick = () =>
+      confirmWeek.onclick = () => {
+        // User tapped confirm — treat as explicit approval for mealPlan status.
         commit((s) => {
           if (s.mealPlan) s.mealPlan.status = 'confirmed';
         }, '주간 식단을 확정했어요.');
+        // App-derived shopping top-up still goes through ActionProposal (one sheet).
+        const shop = buildWeekShoppingProposal(state);
+        if (shop) {
+          try {
+            const preview = previewProposal(state, shop);
+            pendingApproval = { proposal: shop, preview };
+            render();
+          } catch (err) {
+            setToast(err.message || '장보기 제안을 만들지 못했어요.');
+          }
+        }
+      };
     }
-    root.querySelectorAll('[data-act=today-lazy]').forEach((el) => {
+    root.querySelectorAll('[data-act=week-shop-needs]').forEach((el) => {
       el.onclick = () => {
-        state.settings.todayFlags = { lazy: true };
-        persist(state);
-        setToast('저노력 조합으로 바꿨어요.');
-      };
-    });
-    root.querySelectorAll('[data-act=today-noshop]').forEach((el) => {
-      el.onclick = () => {
-        state.settings.todayFlags = { ...(state.settings.todayFlags || {}), noShop: true };
-        persist(state);
-        setToast('재고 위주 메모를 붙였어요.');
-      };
-    });
-    root.querySelectorAll('[data-act=today-refresh]').forEach((el) => {
-      el.onclick = () => {
-        state.settings.todayFlags = { ...(state.settings.todayFlags || {}) };
-        persist(state);
-        setToast('조합을 새로 뽑았어요.');
+        const shop = buildWeekShoppingProposal(state);
+        if (!shop) {
+          setToast('장보기에 넣을 확인된 부족 재료가 없어요.');
+          return;
+        }
+        try {
+          const preview = previewProposal(state, shop);
+          pendingApproval = { proposal: shop, preview };
+          render();
+        } catch (err) {
+          setToast(err.message || '장보기 제안을 만들지 못했어요.');
+        }
       };
     });
 
