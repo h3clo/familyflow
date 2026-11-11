@@ -1137,6 +1137,7 @@ export function createApp(root) {
       <p class="lede">정확한 무게는 필요할 때만. 상태만으로도 장보기와 연결됩니다.</p>
       <form class="manual-add" data-form="add-inventory">
         <p class="hint">분류는 이름으로 자동 지정돼요. 틀리면 수정(✎)에서 바꾸세요.</p>
+        <p class="hint"><a href="https://pay.naver.com/pc/history?page=1&amp;serviceChannel=SHOPPING" target="_blank" rel="noopener noreferrer">네이버페이 주문·결제내역 바로가기</a></p>
         <div class="form-grid">
           <label>이름<input name="name" required maxlength="80" placeholder="브로콜리, 과자, 휴지…" /></label>
           <label>위치<select name="location">${LOCATIONS.map((l) => `<option value="${l.id}">${l.label}</option>`).join('')}</select></label>
