@@ -371,23 +371,48 @@ export function uniqueByPatternSauce(candidates) {
 }
 
 /**
- * Home 「바꾸기」 list: one row per distinct hero JPG.
- * Pattern×sauce first, then drop rows that resolve to an already-seen file
- * (so the button always changes the photo).
+ * Home 「바꾸기」 list: one row per distinct hero JPG, then interleaved so
+ * consecutive taps change pattern (and look) instead of five similar roasts in a row.
  */
 export function uniqueDinnerSwapList(state, candidates) {
   const byPatternSauce = uniqueByPatternSauce(candidates);
   const seenFile = new Set();
-  const out = [];
+  const unique = [];
   for (const c of byPatternSauce) {
     const file = dinnerImageFile(resolveDinnerVisual(state, c).imageSrc);
     if (file) {
       if (seenFile.has(file)) continue;
       seenFile.add(file);
     }
-    out.push(c);
+    unique.push(c);
   }
-  return out.sort(compareDinnerScores);
+  return diversifySwapOrder(unique);
+}
+
+/** Greedy: next pick prefers different pattern, then different sauce, then score. */
+export function diversifySwapOrder(candidates) {
+  const remaining = (candidates || []).slice().sort(compareDinnerScores);
+  const out = [];
+  while (remaining.length) {
+    let bestIdx = 0;
+    if (out.length) {
+      const prev = out[out.length - 1];
+      let best = -Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const c = remaining[i];
+        let s = (c.score?.total || 0) * 0.05;
+        if ((c.patternName || '') !== (prev.patternName || '')) s += 4;
+        if ((c.sauceName || '') !== (prev.sauceName || '')) s += 1.5;
+        if ((c.protein || '') !== (prev.protein || '')) s += 0.5;
+        if (s > best) {
+          best = s;
+          bestIdx = i;
+        }
+      }
+    }
+    out.push(remaining.splice(bestIdx, 1)[0]);
+  }
+  return out;
 }
 
 function proteinFitScore(proteinName, patternName) {
