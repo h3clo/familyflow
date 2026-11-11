@@ -105,6 +105,35 @@ test('parseOrderPaste skips cancelled blocks and durables', () => {
   assert.ok(skipped.some((s) => /마사지기|텀블러/.test(s)) || !ready.some((r) => /마사지기/.test(r.sourceText)));
 });
 
+test('history list paste dedupes 컬리N마트 rows and keeps 무 clean', () => {
+  const text = `
+새벽배송
+11.10.(화) 07:00까지 배송
+[KF365] 무 1입(1kg)자세히 보기
+배송완료
+컬리N마트[KF365] 무 1입(1kg)
+2,070원결제일시11. 9. 14:45 결제
+주문 상세 보기
+더보기
+구매확정하고+19원
+[제각각] 흙대파 1kg자세히 보기
+배송완료
+컬리N마트[제각각] 흙대파 1kg
+3,160원결제일시11. 9. 14:45 결제
+[니뽕내뽕] 크뽕 (크림 짬뽕)자세히 보기
+배송완료
+컬리N마트[니뽕내뽕] 크뽕 (크림 짬뽕)
+6,400원결제일시11. 9. 14:45 결제
+`;
+  const { ready, needsClarify } = parseOrderPaste(text);
+  assert.deepEqual(
+    ready.map((r) => `${r.name}|${r.quantity}${r.unit || ''}`).sort(),
+    ['대파|1kg', '무|1kg', '크뽕|1개'].sort(),
+  );
+  assert.ok(!ready.some((r) => /\[\]/.test(r.name)));
+  assert.equal(needsClarify.length, 0, needsClarify.map((c) => c.name).join(', '));
+});
+
 test('order detail dump keeps real groceries only (no chrome clarify spam)', () => {
   const text = `
 네이버페이주문 상세정보

@@ -25,7 +25,10 @@ const SKIP_PRODUCT =
   /마사지기|미들힐|펌프스|구두|서류가방|텀블러|체험딜|체험단|시카밤|귀걸이|반지|신발|힐\b|가방\b/;
 
 const BRAND_BRACKET = /^\[[^\]]+\]\s*/g;
+/** Seller / store prefix glued in front of brand brackets on history rows. */
+const SELLER_PREFIX = /^(?:컬리N마트|마켓컬리|쿠팡|네이버쇼핑)\s*/i;
 const COLLAB = /\s*x\s*마켓컬리/gi;
+const EMPTY_BRACKETS = /\[\s*\]\s*/g;
 
 /** Marketing / origin fluff stripped from names. */
 const NAME_NOISE =
@@ -188,6 +191,8 @@ function shouldSkipLine(line) {
   if (/^\d{4}\.\d{1,2}\.\d{1,2}/.test(line)) return true; // date stamps on detail header
   if (/^\*{2,}/.test(line) || /\*{3,}/.test(line)) return true;
   if (/자유출입|문 앞|비밀번호/.test(line)) return true;
+  if (/결제일시|원결제/.test(line)) return true;
+  if (/^\d{1,3}(,?\d{3})*원/.test(line) && /결제/.test(line)) return true;
   return false;
 }
 
@@ -195,6 +200,7 @@ function cleanTitleLine(line) {
   return String(line || '')
     .replace(/^상품명\s*/u, '')
     .replace(/^옵션명\s*:\s*/u, '')
+    .replace(SELLER_PREFIX, '')
     .replace(/자세히 보기.*$/u, '')
     .replace(/총\s*\d+\s*건.*$/u, '')
     .replace(/포함\s*\d+\s*건.*$/u, ' 포함 묶음')
@@ -202,12 +208,20 @@ function cleanTitleLine(line) {
     .trim();
 }
 
-/** Dedupe key after stripping brand brackets / spaces. */
+/** Dedupe key after stripping seller/brand brackets / spaces. */
 function normalizeTitleKey(title) {
-  return String(title || '')
-    .replace(BRAND_BRACKET, '')
-    .replace(/\s+/g, '')
-    .toLowerCase();
+  let t = String(title || '').replace(SELLER_PREFIX, '');
+  // Strip every leading brand/promo bracket so history + store-prefixed rows collide.
+  for (let i = 0; i < 6; i++) {
+    const next = t
+      .replace(/^\[[^\]]*원[^\]]*\]\s*/u, '')
+      .replace(/^\[[^\]]+\]\s*/u, '')
+      .replace(EMPTY_BRACKETS, '')
+      .trim();
+    if (next === t) break;
+    t = next;
+  }
+  return t.replace(/\s+/g, '').toLowerCase();
 }
 
 /**
@@ -218,9 +232,14 @@ function normalizeTitleKey(title) {
 export function normalizeOrderTitle(title) {
   let t = String(title || '').trim();
   if (!t) return null;
-  t = t.replace(/^상품명\s*/u, '').replace(/^옵션명\s*:\s*/u, '').trim();
+  t = t
+    .replace(/^상품명\s*/u, '')
+    .replace(/^옵션명\s*:\s*/u, '')
+    .replace(SELLER_PREFIX, '')
+    .trim();
   if (!t) return null;
   if (SKIP_DETAIL_CHROME.test(t) || SKIP_LINE.test(t) || SKIP_STATUS.test(t)) return null;
+  if (/결제일시|원결제/.test(t)) return null;
 
   const location = guessLocationFromTitle(t) || undefined;
 
@@ -233,14 +252,24 @@ export function normalizeOrderTitle(title) {
   // Cancelled / returned markers sometimes stick to title context — caller filters status;
   // still skip obvious durable.
   if (SKIP_PRODUCT.test(t)) return null;
+  // Peel seller + stacked brand/promo brackets (history rows: 컬리N마트[KF365] …).
+  t = t.replace(SELLER_PREFIX, '');
+  for (let i = 0; i < 4; i++) {
+    const next = t
+      .replace(DEAL_BRACKET, '')
+      .replace(PROMO_BRACKET, '')
+      .replace(BRAND_BRACKET, '')
+      .replace(EMPTY_BRACKETS, '')
+      .trim();
+    if (next === t) break;
+    t = next;
+  }
   t = t
-    .replace(DEAL_BRACKET, '')
-    .replace(PROMO_BRACKET, '')
-    .replace(BRAND_BRACKET, '')
     .replace(COLLAB, ' ')
     .replace(STORAGE_MARK, ' ')
     .replace(GRADE_MARK, ' ')
     .replace(/\s*\(\d{2}년\s*햇\)\s*/g, ' ')
+    .replace(EMPTY_BRACKETS, '')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -505,9 +534,15 @@ function clarify(name, sourceText, reason, location) {
 }
 
 function stripToName(s) {
-  return String(s || '')
-    .replace(BRAND_BRACKET, '')
+  let t = String(s || '').replace(SELLER_PREFIX, '');
+  for (let i = 0; i < 4; i++) {
+    const next = t.replace(BRAND_BRACKET, '').replace(EMPTY_BRACKETS, '').trim();
+    if (next === t) break;
+    t = next;
+  }
+  return t
     .replace(NAME_NOISE, '')
+    .replace(EMPTY_BRACKETS, '')
     .replace(/\([^)]*\)/g, ' ')
     .replace(/[＃#]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -572,7 +607,11 @@ export function canonicalName(name) {
   if (/불닭소스|까르보불닭/.test(n)) n = '까르보불닭소스';
   if (/야채찜/.test(n)) n = '야채찜';
   if (/감자/.test(n)) n = '감자';
-  if (/무\b|^무$/.test(n) || n === '무') n = '무';
+  // Hangul is not a JS \b word char — match 무 by itself after stripping junk brackets.
+  {
+    const bare = n.replace(/[\[\]\s]/g, '');
+    if (bare === '무' || /(^|\s)무(\s|$)/.test(n)) n = '무';
+  }
   if (/가지/.test(n)) n = '가지';
   if (/감귤|귤/.test(n)) n = '감귤';
   if (/사과/.test(n)) n = '사과';
