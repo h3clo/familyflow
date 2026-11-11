@@ -128,11 +128,21 @@ await page.waitForTimeout(200);
 const onList = await page.evaluate(() => {
   const s = JSON.parse(localStorage.getItem('familyflow-v1'));
   const list = s.shoppingLists.find((l) => l.id === s.settings.activeListId) || s.shoppingLists[0];
-  return (list?.items || []).filter((i) => !i.checked).map((i) => i.name);
+  return (list?.items || [])
+    .filter((i) => !i.checked)
+    .map((i) => ({ name: i.name, quantity: i.quantity }));
 });
-say('open shopping items:', onList.join(', ') || '(none)');
-if (!onList.some((n) => n.includes('간장'))) {
+say('open shopping items:', JSON.stringify(onList));
+const soy = onList.find((i) => i.name.includes('간장'));
+if (!soy) {
   throw new Error('expected 간장 on shopping list from sauce/week shortage flow');
+}
+if (soy.quantity != null) {
+  throw new Error(`간장 buy qty must stay null (got ${soy.quantity})`);
+}
+const body = await page.locator('.shop-list').innerText();
+if (!/수량 미확인/.test(body)) {
+  throw new Error('shopping UI should show 수량 미확인 for null qty');
 }
 await page.screenshot({ path: path.join(OUT, 'flow-shopping-after.png'), fullPage: true });
 

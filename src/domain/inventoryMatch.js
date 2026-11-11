@@ -1,6 +1,7 @@
 /**
  * Loose inventory name matching for sauce components and week shortages.
  * Never invents stock: missing/unknown → disclose only; shop only for confirmed low/out.
+ * Never invents buy quantity: low/out is a signal only; remaining stock qty ≠ purchase need.
  */
 
 export function normalizeItemName(name) {
@@ -19,13 +20,13 @@ export function stripComponentDecorators(name) {
     .trim();
 }
 
-/**
- * Expand "꿀 또는 올리고당" / "식초·레몬즙" into match candidates.
- * Short pantry tokens under 2 Hangul/latin chars are skipped for containment.
- */
 /** Common prep prefixes in seed sauce components → also try bare pantry name. */
 const PREP_PREFIX_RE = /^(다진|갈아낸|생|채썬|썬)\s+/;
 
+/**
+ * Expand "꿀 또는 올리고당" / prep prefixes into exact-match candidates.
+ * No substring containment — avoids 간장↔국간장, 참기름↔들기름 false hits.
+ */
 export function componentNameCandidates(rawName) {
   const base = stripComponentDecorators(rawName);
   if (!base) return [];
@@ -51,7 +52,8 @@ export function isOptionalComponent(rawName) {
 }
 
 /**
- * Find inventory row by normalized name, then by candidate aliases.
+ * Find inventory row by exact normalized name (including prep-stripped / 또는 candidates).
+ * Does not use partial substring matching.
  * @returns {object|null}
  */
 export function findInventoryByName(state, queryName) {
@@ -63,17 +65,6 @@ export function findInventoryByName(state, queryName) {
     if (!key) continue;
     const exact = inventory.find((i) => normalizeItemName(i.name) === key);
     if (exact) return exact;
-  }
-  // Containment only for longer tokens (avoid 물/깨/소금 false friends).
-  for (const cand of candidates) {
-    const key = normalizeItemName(cand);
-    if (key.length < 3) continue;
-    const hit = inventory.find((i) => {
-      const n = normalizeItemName(i.name);
-      if (n.length < 3) return false;
-      return n.includes(key) || key.includes(n);
-    });
-    if (hit) return hit;
   }
   return null;
 }
@@ -111,7 +102,9 @@ export function resolveSauceComponentStatuses(state, sauce) {
 
 /**
  * Build shopping need rows from protein + sauce component statuses.
- * Only confirmed low/out. Never invents quantity beyond inventory.quantity or 1.
+ * Only confirmed low/out. Quantity is always null here:
+ * remaining inventory qty is not a purchase need, and we do not invent 1.
+ * Unit may come from the inventory row when present (label only).
  */
 export function shoppingNeedsFromStatuses(rows, { guessUnit } = {}) {
   const needs = [];
@@ -124,16 +117,13 @@ export function shoppingNeedsFromStatuses(rows, { guessUnit } = {}) {
     const key = normalizeItemName(name);
     if (seen.has(key)) continue;
     seen.add(key);
-    const qty =
-      row.item?.quantity != null && Number(row.item.quantity) > 0
-        ? Number(row.item.quantity)
-        : 1;
     const unit =
       (row.item?.unit && String(row.item.unit).trim()) ||
-      (typeof guessUnit === 'function' ? guessUnit(name) : '개');
+      (typeof guessUnit === 'function' ? guessUnit(name) : null) ||
+      null;
     needs.push({
       name,
-      quantity: qty,
+      quantity: null,
       unit,
       inventoryId: row.inventoryId || null,
       status: row.status,

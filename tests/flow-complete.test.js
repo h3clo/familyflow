@@ -58,7 +58,9 @@ test('sauce component low/out adds shopping.add; unknown does not', () => {
   const offer = buildDinnerHomeOffer(state);
   assert.equal(offer.status, 'offer');
   const shopOps = offer.offer.proposal.ops.filter((o) => o.op === 'shopping.add');
-  assert.ok(shopOps.some((o) => o.payload.name === '간장'));
+  const soy = shopOps.find((o) => o.payload.name === '간장');
+  assert.ok(soy);
+  assert.equal(soy.payload.quantity, null, 'must not invent buy qty 1');
   assert.equal(
     shopOps.some((o) => /마늘/.test(o.payload.name)),
     false,
@@ -96,20 +98,26 @@ test('weekDinnerShortages links confirmed low sauce/protein to shopping proposal
 
   const needs = weekDinnerShortages(state);
   assert.ok(needs.some((n) => n.name === '닭고기'));
-  assert.ok(needs.some((n) => n.name === '간장'));
+  const soyNeed = needs.find((n) => n.name === '간장');
+  assert.ok(soyNeed);
+  assert.equal(soyNeed.quantity, null, 'remaining stock 1병 must not become buy qty');
+  assert.equal(soyNeed.unit, '병');
 
   const proposal = buildWeekShoppingProposal(state);
   assert.ok(proposal);
   assert.ok(proposal.ops.every((o) => o.op === 'shopping.add'));
+  assert.ok(proposal.ops.every((o) => o.payload.quantity == null));
   const preview = previewProposal(state, proposal);
   assert.equal(preview.ok, true);
   assert.equal(ensureActiveList(state).items.length, 0);
 
   const applied = applyProposal(state, proposal);
   assert.equal(applied.ok, true);
-  const names = ensureActiveList(state).items.map((i) => i.name);
+  const list = ensureActiveList(state);
+  const names = list.items.map((i) => i.name);
   assert.ok(names.includes('닭고기'));
   assert.ok(names.includes('간장'));
+  assert.ok(list.items.every((i) => i.quantity == null));
 
   // Second proposal skips items already on list
   assert.equal(buildWeekShoppingProposal(state), null);
