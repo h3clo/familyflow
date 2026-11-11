@@ -5,11 +5,11 @@
 
 ## 현재 시작점 (2026-11-11 Asia/Seoul)
 
-**방금 완료:** _(배포 대기 브랜치)_ 저녁 히어로 전면 재촬영 · 「바꾸기」패턴 교차 순서로 체감 반복 완화.
+**방금 완료:** 저녁 히어로 전면 재촬영 배포(#41).
 
-**지금 작업:** dinner image pass PR 검토(머지·배포는 사용자 승인 후).
+**지금 작업:** 네이버페이·마이쇼핑 주문 붙여넣기 → 재고 제안(#42).
 
-**다음 행동 (한 가지):** 히어로 사진 확인 후 머지 여부 결정.
+**다음 행동 (한 가지):** #42 시각 확인 후 머지·배포 여부.
 
 작업 기준 브랜치: 평소 `main`.  
 배포: https://h3clo.github.io/familyflow/
@@ -24,7 +24,8 @@
 | 샤브·스타터 단백질·사진 단위 바꾸기 | 배포 | PR #38 |
 | UI/비주얼(토큰 미확정) | 배포 | dinner 에셋 |
 | Pages SW 캐시 | 배포 | #18 network-first · PWA `build.json` 자동 갱신 |
-| `?sandbox&device=` 저장 격리 | 코드 | `src/lib/storageScope.js` |
+| `?sandbox&device=` 저장 격리 | 배포 | `src/lib/storageScope.js` |
+| 네이버페이 주문 붙여넣기 → 재고 | PR | #42 · `orderPaste.js` · DECISIONS §8 |
 
 ## 검증됨 vs 미검증
 
@@ -42,7 +43,7 @@
 
 ## 현재 승인된 결정
 
-포인터 — [DECISIONS.md](DECISIONS.md): ActionProposal, auth-first, 홈 저녁 §6.1 · ranking v2 · sandbox URL 격리.
+포인터 — [DECISIONS.md](DECISIONS.md): ActionProposal, auth-first, 홈 저녁 §6.1 · ranking v2 · sandbox URL 격리 · 주문 붙여넣기 §8.
 비주얼 팔레트·타이포 **미확정**.
 
 ## 작업 대기열

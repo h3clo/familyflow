@@ -32,6 +32,11 @@ import {
 } from './domain/suggestions.js';
 import { ProposalError } from './domain/proposals.js';
 import { proposalFromInventoryChip } from './domain/inventoryProposals.js';
+import {
+  NAVER_PAY_HISTORY_URL,
+  parseOrderPaste,
+  applyClarifyAnswer,
+} from './domain/orderPaste.js';
 import { readDeferAuth, writeDeferAuth, hasLocalHouseholdActivity } from './lib/deferAuth.js';
 import {
   buildDinnerHomeOffer,
@@ -110,6 +115,8 @@ export function createApp(root) {
   /** Inventory row currently being edited (separate from shopping edit). */
   let editingInventoryId = null;
   let pendingProposals = [];
+  /** @type {null | { ready: object[], needsClarify: object[], skipped: string[] }} */
+  let orderPasteDraft = null;
   let quickDraft = null;
   /** @type {null | { proposal: object, preview: object }} */
   let pendingApproval = null;
@@ -1133,11 +1140,66 @@ export function createApp(root) {
       ...loc,
       items: state.inventory.filter((i) => i.location === loc.id),
     }));
+    const paste = orderPasteDraft;
     return `
       <p class="lede">정확한 무게는 필요할 때만. 상태만으로도 장보기와 연결됩니다.</p>
+      <form class="manual-add order-paste" data-form="order-paste">
+        <p class="hint">네이버페이·마이쇼핑 주문 화면을 복사해 붙여 넣으면 재고 이름으로 정리해 드려요. 승인 전에 저장하지 않아요.</p>
+        <p class="hint"><a href="${esc(NAVER_PAY_HISTORY_URL)}" target="_blank" rel="noopener noreferrer">네이버페이 주문·결제내역 바로가기</a></p>
+        <label class="block-label">주문 내역 붙여넣기
+          <textarea name="paste" rows="5" placeholder="결제완료&#10;[KF365] 무항생제 달걀 XL(특란) 40구…"></textarea>
+        </label>
+        <button type="submit" class="secondary block">붙여넣기 분석</button>
+      </form>
+      ${
+        paste
+          ? `<section class="panel proposals" data-order-paste-result>
+          <h2>재고에 넣을까요?</h2>
+          ${
+            paste.ready.length
+              ? paste.ready
+                  .map((p, idx) => {
+                    const qty =
+                      p.quantity != null && p.unit
+                        ? `${p.quantity}${esc(p.unit)}`
+                        : p.quantity != null
+                          ? String(p.quantity)
+                          : '수량 없음(상태만)';
+                    const loc = LOCATIONS.find((l) => l.id === p.location)?.label || p.location;
+                    return `<label class="proposal"><input type="checkbox" name="order-ready" value="${idx}" checked /><span><strong>${esc(p.name)}</strong> · ${esc(qty)} · ${esc(loc)} · 충분함</span></label>`;
+                  })
+                  .join('')
+              : '<p class="empty">바로 등록할 항목이 없어요.</p>'
+          }
+          ${
+            paste.needsClarify.length
+              ? `<h3 class="subhead">확인이 필요해요</h3>
+              <p class="hint">상세 옵션·용량을 짧게 적어 주세요. 예: 1kg, 물냉</p>
+              ${paste.needsClarify
+                .map(
+                  (p, idx) => `<div class="clarify-row" data-clarify-idx="${idx}">
+                    <p><strong>${esc(p.name)}</strong> <small>${esc(p.clarifyReason || '')}</small></p>
+                    <p class="fine muted-src">${esc(p.sourceText)}</p>
+                    <div class="row-actions">
+                      <input name="clarify-${idx}" maxlength="40" placeholder="1kg / 옵션명" aria-label="${esc(p.name)} 보완" />
+                      <button type="button" class="secondary" data-act="clarify-order" data-idx="${idx}">반영</button>
+                    </div>
+                  </div>`,
+                )
+                .join('')}`
+              : ''
+          }
+          ${
+            paste.ready.length
+              ? `<button type="button" class="primary block" data-act="apply-order-paste">선택한 항목 재고에 등록</button>`
+              : ''
+          }
+          <button type="button" class="ghost block" data-act="clear-order-paste">붙여넣기 닫기</button>
+        </section>`
+          : ''
+      }
       <form class="manual-add" data-form="add-inventory">
         <p class="hint">분류는 이름으로 자동 지정돼요. 틀리면 수정(✎)에서 바꾸세요.</p>
-        <p class="hint"><a href="https://pay.naver.com/pc/history?page=1&amp;serviceChannel=SHOPPING" target="_blank" rel="noopener noreferrer">네이버페이 주문·결제내역 바로가기</a></p>
         <div class="form-grid">
           <label>이름<input name="name" required maxlength="80" placeholder="브로콜리, 과자, 휴지…" /></label>
           <label>위치<select name="location">${LOCATIONS.map((l) => `<option value="${l.id}">${l.label}</option>`).join('')}</select></label>
@@ -1884,6 +1946,86 @@ export function createApp(root) {
           checked.forEach((idx) => applyPurchaseToInventory(s, pendingProposals[idx], { accept: true }));
         }, '재고에 반영했어요.');
         pendingProposals = [];
+      };
+    }
+
+    const orderPasteForm = root.querySelector('[data-form=order-paste]');
+    if (orderPasteForm) {
+      orderPasteForm.onsubmit = (e) => {
+        e.preventDefault();
+        const text = String(new FormData(orderPasteForm).get('paste') || '');
+        const parsed = parseOrderPaste(text);
+        orderPasteDraft = parsed;
+        if (!parsed.ready.length && !parsed.needsClarify.length) {
+          setToast('주문 상품을 찾지 못했어요. 상품명이 보이게 복사해 주세요.');
+        } else {
+          const n = parsed.ready.length + parsed.needsClarify.length;
+          setToast(`${n}개 항목을 정리했어요. 아래에서 확인하세요.`);
+        }
+        render();
+      };
+    }
+    root.querySelectorAll('[data-act=clarify-order]').forEach((el) => {
+      el.onclick = () => {
+        if (!orderPasteDraft) return;
+        const idx = Number(el.dataset.idx);
+        const input = root.querySelector(`[name=clarify-${idx}]`);
+        const answer = input?.value || '';
+        const item = orderPasteDraft.needsClarify[idx];
+        if (!item) return;
+        const resolved = applyClarifyAnswer(item, answer);
+        if (resolved.needsClarify) {
+          setToast(resolved.clarifyReason || '용량을 예: 1kg 처럼 적어 주세요.');
+          return;
+        }
+        orderPasteDraft.needsClarify.splice(idx, 1);
+        orderPasteDraft.ready.push(resolved);
+        setToast(`${resolved.name}을(를) 목록에 넣었어요.`);
+        render();
+      };
+    });
+    const applyOrderPaste = root.querySelector('[data-act=apply-order-paste]');
+    if (applyOrderPaste) {
+      applyOrderPaste.onclick = () => {
+        if (!orderPasteDraft?.ready?.length) return;
+        const checked = [...root.querySelectorAll('input[name=order-ready]:checked')].map((el) => Number(el.value));
+        if (!checked.length) {
+          setToast('등록할 항목을 선택해 주세요.');
+          return;
+        }
+        commit((s) => {
+          checked.forEach((idx) => {
+            const p = orderPasteDraft.ready[idx];
+            if (!p) return;
+            applyPurchaseToInventory(
+              s,
+              {
+                name: p.name,
+                quantity: p.quantity,
+                unit: p.unit,
+                category: p.category,
+                location: p.location,
+                suggestedStatus: p.status || 'enough',
+              },
+              { accept: true },
+            );
+          });
+        }, `${checked.length}개 재고를 등록했어요.`);
+        orderPasteDraft = {
+          ...orderPasteDraft,
+          ready: orderPasteDraft.ready.filter((_, i) => !checked.includes(i)),
+        };
+        if (!orderPasteDraft.ready.length && !orderPasteDraft.needsClarify.length) {
+          orderPasteDraft = null;
+        }
+        render();
+      };
+    }
+    const clearOrderPaste = root.querySelector('[data-act=clear-order-paste]');
+    if (clearOrderPaste) {
+      clearOrderPaste.onclick = () => {
+        orderPasteDraft = null;
+        render();
       };
     }
 
