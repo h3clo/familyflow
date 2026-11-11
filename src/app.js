@@ -114,6 +114,8 @@ export function createApp(root) {
   let editingId = null;
   /** Inventory row currently being edited (separate from shopping edit). */
   let editingInventoryId = null;
+  /** Family member note currently being edited. */
+  let editingMemberId = null;
   let pendingProposals = [];
   /** @type {null | { ready: object[], needsClarify: object[], skipped: string[] }} */
   let orderPasteDraft = null;
@@ -678,17 +680,18 @@ export function createApp(root) {
   }
 
   function familyView() {
+    const members = state.members || [];
     return `
       <section class="panel">
         <p class="lede">가입 계정이 아니라, 집 안 이름표예요.</p>
         <h2>가족 프로필</h2>
         <p class="hint">엄마·아빠는 별도 가입하지 않아도 됩니다. 건강·금융 정보는 저장하지 않아요.</p>
-        <ul class="chip-list">${(state.members || [])
-          .map(
-            (m) =>
-              `<li class="member-chip"><span class="member-chip-text">${esc(m.displayName)} · ${esc(m.roleLabel || m.role || '구성원')}</span><button type="button" class="ghost member-chip-x" data-act="remove-member" data-id="${esc(m.id)}" aria-label="삭제">×</button></li>`,
-          )
-          .join('')}</ul>
+        <p class="hint">저녁 추천용 취향은 메모에 <code>좋아함:</code> · <code>싫어함:</code> 태그만 적어요. 예: <code>좋아함:닭,야채찜 싫어함:돼지</code></p>
+        <ul class="member-list">${
+          members.length
+            ? members.map((m) => memberRow(m)).join('')
+            : '<li class="empty">아직 프로필이 없어요.</li>'
+        }</ul>
         <form data-form="add-member" class="cloud-auth">
           <label>이름<input name="displayName" required maxlength="40" placeholder="엄마" /></label>
           <label>역할
@@ -700,13 +703,51 @@ export function createApp(root) {
               <option value="관리자">관리자</option>
             </select>
           </label>
+          <label>취향 메모(선택)<input name="note" maxlength="120" placeholder="좋아함:닭 싫어함:돼지" /></label>
           <button type="submit" class="secondary">프로필 추가</button>
         </form>
       </section>
       <section class="panel muted">
         <h2>아직 안 하는 것</h2>
-        <ul class="locked"><li>가족 건강</li><li>가족 일정</li><li>가사 분담</li></ul>
+        <ul class="locked"><li>가족 건강</li><li>가족 일정</li><li>가사 분담</li><li>취향 전용 DB 컬럼</li><li>한 끼 예산 배지</li></ul>
       </section>`;
+  }
+
+  function memberRow(m) {
+    if (editingMemberId === m.id) {
+      return `<li class="member-row edit">
+        <form data-form="edit-member" data-id="${esc(m.id)}">
+          <input name="displayName" value="${esc(m.displayName)}" required maxlength="40" aria-label="이름" />
+          <select name="roleLabel" aria-label="역할">
+            ${['구성원', '엄마', '아빠', '자녀', '관리자']
+              .map(
+                (r) =>
+                  `<option value="${r}" ${
+                    (m.roleLabel || m.role || '구성원') === r ? 'selected' : ''
+                  }>${r}</option>`,
+              )
+              .join('')}
+          </select>
+          <label>취향 메모<input name="note" value="${esc(m.note || '')}" maxlength="120" placeholder="좋아함:닭,야채찜 싫어함:돼지" /></label>
+          <div class="row-actions">
+            <button type="submit" class="primary">저장</button>
+            <button type="button" class="ghost" data-act="cancel-member-edit">취소</button>
+          </div>
+        </form>
+      </li>`;
+    }
+    const note = String(m.note || '').trim();
+    return `<li class="member-row">
+      <div class="member-row-main">
+        <strong>${esc(m.displayName)}</strong>
+        <small>${esc(m.roleLabel || m.role || '구성원')}</small>
+        ${note ? `<p class="member-note">${esc(note)}</p>` : '<p class="member-note muted">취향 메모 없음</p>'}
+      </div>
+      <div class="row-actions">
+        <button type="button" class="icon" data-act="edit-member" data-id="${esc(m.id)}" aria-label="수정">✎</button>
+        <button type="button" class="icon danger" data-act="remove-member" data-id="${esc(m.id)}" aria-label="삭제">✕</button>
+      </div>
+    </li>`;
   }
 
   function homeView({ immersive = false } = {}) {
@@ -2409,15 +2450,51 @@ export function createApp(root) {
             displayName: String(fd.displayName || '').trim(),
             roleLabel: fd.roleLabel || '구성원',
             role: fd.roleLabel === '관리자' ? 'owner' : 'member',
-            note: '',
+            note: String(fd.note || '').trim().slice(0, 120),
             sortOrder: s.members.length,
           });
         }, '가족 프로필을 추가했어요.');
       };
     }
 
+    root.querySelectorAll('[data-act=edit-member]').forEach((btn) => {
+      btn.onclick = () => {
+        editingMemberId = btn.dataset.id;
+        editingId = null;
+        editingInventoryId = null;
+        render();
+      };
+    });
+    root.querySelectorAll('[data-act=cancel-member-edit]').forEach((btn) => {
+      btn.onclick = () => {
+        editingMemberId = null;
+        render();
+      };
+    });
+    root.querySelectorAll('[data-form=edit-member]').forEach((form) => {
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(form));
+        const name = String(fd.displayName || '').trim();
+        if (!name) {
+          setToast('이름이 필요해요.');
+          return;
+        }
+        commit((s) => {
+          const m = (s.members || []).find((x) => x.id === form.dataset.id);
+          if (!m) throw new Error('프로필을 찾을 수 없어요.');
+          m.displayName = name;
+          m.roleLabel = fd.roleLabel || m.roleLabel || '구성원';
+          m.role = m.roleLabel === '관리자' ? 'owner' : 'member';
+          m.note = String(fd.note || '').trim().slice(0, 120);
+        }, '가족 프로필을 저장했어요.');
+        editingMemberId = null;
+      };
+    });
+
     root.querySelectorAll('[data-act=remove-member]').forEach((btn) => {
       btn.onclick = () => {
+        if (editingMemberId === btn.dataset.id) editingMemberId = null;
         commit((s) => {
           s.members = (s.members || []).filter((m) => m.id !== btn.dataset.id);
         }, '프로필을 삭제했어요.');
