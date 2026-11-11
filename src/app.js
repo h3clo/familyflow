@@ -920,9 +920,9 @@ export function createApp(root) {
       .filter(Boolean)
       .join(' · ');
     return `<section class="dinner-stage" aria-label="오늘 저녁">
-      <div class="dinner-media" style="background-image:url('${esc(visual.imageSrc)}')" role="img" aria-label="${esc(
-        mediaLabel || '저녁 패턴',
-      )}">
+      <div class="dinner-media" data-hero-src="${esc(visual.imageSrc || '')}" style="background-image:url('${esc(
+        visual.imageSrc,
+      )}')" role="img" aria-label="${esc(mediaLabel || '저녁 패턴')}">
         <div class="dinner-media-top">
           <p class="dinner-brand">Family Flow</p>
           <div class="dinner-media-meta">

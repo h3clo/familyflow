@@ -6,6 +6,7 @@ import {
   listDinnerCandidates,
   uniqueByPatternSauce,
   uniqueDinnerSwapList,
+  diversifySwapOrder,
   STARTER_PROTEINS,
 } from '../src/domain/dinnerHome.js';
 import { resolveDinnerVisual } from '../src/domain/dinnerVisual.js';
@@ -129,10 +130,29 @@ test('starter swap list is unique pattern×sauce photos including shabu', () => 
   assert.ok(files.some((f) => f.startsWith('shabu')));
   assert.ok(swap.some((c) => c.patternName === '샤브샤브'));
   assert.ok(swap.every((c) => c.title === c.patternName));
+  // Consecutive taps should usually change pattern (avoid five 구이 in a row).
+  let samePat = 0;
+  for (let i = 1; i < swap.length; i++) {
+    if (swap[i].patternName === swap[i - 1].patternName) samePat += 1;
+  }
+  assert.ok(samePat <= 3, `swap still clumps patterns (${samePat} adjacent same): ${swap.map((c) => c.patternName)}`);
   assert.deepEqual(
     STARTER_PROTEINS,
     ['닭다리살', '연어', '고등어', '우삼겹', '대패삼겹살', '목살'],
   );
+});
+
+test('diversifySwapOrder prefers alternating patterns', () => {
+  const rows = [
+    { patternName: '야채구이', sauceName: 'a', score: { total: 1 } },
+    { patternName: '야채구이', sauceName: 'b', score: { total: 0.9 } },
+    { patternName: '야채구이', sauceName: 'c', score: { total: 0.8 } },
+    { patternName: '야채찜', sauceName: 'd', score: { total: 0.7 } },
+    { patternName: '샤브샤브', sauceName: 'e', score: { total: 0.95 } },
+  ];
+  const out = diversifySwapOrder(rows);
+  assert.equal(out[0].patternName, '야채구이');
+  assert.notEqual(out[1].patternName, '야채구이');
 });
 
 test('swap does not collapse unrelated patterns onto sauces[0]', () => {
