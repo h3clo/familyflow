@@ -1306,20 +1306,24 @@ export function createApp(root) {
         </form>
       </li>`;
     }
-    return `<li>
-      <div><strong>${esc(item.name)}</strong><small>${
-        item.quantity != null
-          ? `${item.quantity}${esc(item.unit || '')} · `
-          : '수량 미확인 · '
-      }${catLabel(item.category)}</small></div>
-      <div class="status-chips">${STATUSES.map(
-        (s) =>
-          `<button type="button" class="${item.status === s.id ? 'on' : ''}" data-act="inv-status" data-id="${item.id}" data-status="${s.id}">${s.label}</button>`,
-      ).join('')}</div>
+    const statusShort = { enough: '충분', low: '부족', out: '없음', unknown: '모름' };
+    const meta =
+      item.quantity != null
+        ? `${item.quantity}${esc(item.unit || '')} · ${esc(catLabel(item.category))}`
+        : `수량 미확인 · ${esc(catLabel(item.category))}`;
+    return `<li class="inv-row" data-status="${esc(item.status)}">
+      <div class="inv-main">
+        <strong>${esc(item.name)}</strong>
+        <small>${meta}</small>
+      </div>
       <div class="row-actions">
         <button type="button" class="icon" data-act="inv-edit" data-id="${item.id}" aria-label="수정">✎</button>
         <button type="button" class="icon danger" data-act="inv-delete" data-id="${item.id}" aria-label="삭제">✕</button>
       </div>
+      <div class="status-chips inv-status-chips" role="group" aria-label="${esc(item.name)} 상태">${STATUSES.map(
+        (s) =>
+          `<button type="button" class="${item.status === s.id ? 'on' : ''}" data-act="inv-status" data-id="${item.id}" data-status="${s.id}" aria-pressed="${item.status === s.id ? 'true' : 'false'}" title="${esc(s.label)}">${statusShort[s.id] || s.label}</button>`,
+      ).join('')}</div>
     </li>`;
   }
 
