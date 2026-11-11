@@ -252,6 +252,9 @@ function writeDomain(state, draft) {
 }
 
 function inferNavigate(ops) {
+  // Dinner confirm stays on home so the user sees “확정” without bouncing to 식단/장보기.
+  // Bundled shopping.add is still applied; open items show as a home shortcut.
+  if (ops.some((o) => o.op === 'meals.confirm_dinner')) return 'home';
   if (ops.some((o) => o.op.startsWith('shopping.'))) return 'shopping';
   if (ops.some((o) => o.op.startsWith('meals.'))) return 'meals';
   if (ops.some((o) => o.op.startsWith('inventory.'))) return 'inventory';

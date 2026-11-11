@@ -59,17 +59,33 @@ test('tissue already on list is not suggested again', () => {
   );
 });
 
-test('chicken drumstick in stock suggests dinner via proposal', () => {
+test('protein in stock does not duplicate dinner confirm (home hero owns it)', () => {
   const state = fresh();
   state.inventory.push(
     createInventoryItem({ name: '닭다리살', status: 'enough', location: 'fridge', category: 'food' }),
   );
   const pack = generateSuggestions(state);
-  const hit = pack.suggestions.find((s) => s.ops.some((o) => o.op === 'meals.confirm_dinner'));
-  assert.ok(hit);
-  assert.match(hit.title, /닭다리살/);
-  applySuggestion(state, hit);
-  assert.equal(state.todayDinner.protein, '닭다리살');
+  assert.equal(
+    pack.suggestions.find((s) => s.ops.some((o) => o.op === 'meals.confirm_dinner')),
+    undefined,
+  );
+});
+
+test('shopping suggestion qty stays null (no invent / no copy remaining stock)', () => {
+  const state = fresh();
+  state.inventory.push(
+    createInventoryItem({
+      name: '휴지',
+      status: 'out',
+      location: 'storage',
+      category: 'household',
+      quantity: 2,
+      unit: '롤',
+    }),
+  );
+  const pack = generateSuggestions(state);
+  const hit = pack.suggestions.find((s) => shopName(s) === '휴지');
+  assert.equal(hit.ops[0].payload.quantity, null);
 });
 
 test('dismiss prevents immediate repeat', () => {
