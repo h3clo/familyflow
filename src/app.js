@@ -22,6 +22,12 @@ import {
   applyPurchaseToInventory,
 } from './domain/inventory.js';
 import {
+  filterSortInventory,
+  statusLabel,
+  locationLabel,
+  INV_STATUS_SHORT,
+} from './domain/inventoryList.js';
+import {
   draftWeek,
   mealsTodayViewModel,
   buildWeekShoppingProposal,
@@ -119,6 +125,15 @@ export function createApp(root) {
   let editingId = null;
   /** Inventory row currently being edited (separate from shopping edit). */
   let editingInventoryId = null;
+  /** Expanded compact inventory row (session only). */
+  let expandedInventoryId = null;
+  /** Inventory list toolbar (session only — not persisted). */
+  let invQuery = '';
+  let invFilterLocation = 'all';
+  let invFilterStatus = 'all';
+  let invSort = 'name';
+  /** null = auto (open when empty / paste); otherwise remember user toggle. */
+  let invToolsOpen = null;
   /** Family member note currently being edited. */
   let editingMemberId = null;
   let pendingProposals = [];
@@ -666,8 +681,11 @@ export function createApp(root) {
       { id: 'inventory', label: '재고' },
       { id: 'meals', label: '식단' },
     ];
-    return `
-      <section class="panel food-coach" aria-label="지금 할 일">
+    // Inventory needs vertical room for the compact list — skip the coach card there.
+    const coach =
+      seg === 'inventory'
+        ? ''
+        : `<section class="panel food-coach" aria-label="지금 할 일">
         <p class="label">불편해지기 전에 먼저</p>
         <h2>${esc(next.title)}</h2>
         <p class="hint">${esc(next.hint)}</p>
@@ -676,8 +694,10 @@ export function createApp(root) {
             ? `<button type="button" class="primary block" data-nav="food" data-segment="${next.segment}">${esc(next.cta)}</button>`
             : `<p class="hint">아래에 바로 이어서 하면 돼요.</p>`
         }
-      </section>
-      <div class="food-segments" role="tablist" aria-label="식생활 구분">
+      </section>`;
+    return `
+      ${coach}
+      <div class="food-segments ${seg === 'inventory' ? 'compact' : ''}" role="tablist" aria-label="식생활 구분">
         ${segments
           .map(
             (s) =>
@@ -1203,93 +1223,125 @@ export function createApp(root) {
   }
 
   function inventoryView() {
-    const byLoc = LOCATIONS.map((loc) => ({
-      ...loc,
-      items: state.inventory.filter((i) => i.location === loc.id),
-    }));
     const paste = orderPasteDraft;
+    const filtered = filterSortInventory(state.inventory, {
+      query: invQuery,
+      location: invFilterLocation,
+      status: invFilterStatus,
+      sort: invSort,
+    });
+    const toolsOpen =
+      invToolsOpen != null ? invToolsOpen : Boolean(paste) || state.inventory.length === 0;
+    const toolsBody = `
+        <form class="manual-add order-paste" data-form="order-paste">
+          <p class="hint">네이버페이·마이쇼핑 주문 화면을 복사해 붙여 넣으면 재고 이름으로 정리해 드려요. 승인 전에 저장하지 않아요.</p>
+          <p class="hint"><a href="${esc(NAVER_PAY_HISTORY_URL)}" target="_blank" rel="noopener noreferrer">네이버페이 주문·결제내역 바로가기</a></p>
+          <label class="block-label">주문 내역 붙여넣기
+            <textarea name="paste" rows="4" placeholder="결제완료&#10;[KF365] 무항생제 달걀 XL(특란) 40구…"></textarea>
+          </label>
+          <button type="submit" class="secondary block">붙여넣기 분석</button>
+        </form>
+        ${
+          paste
+            ? `<section class="proposals" data-order-paste-result>
+            <h2>재고에 넣을까요?</h2>
+            ${
+              paste.ready.length
+                ? paste.ready
+                    .map((p, idx) => {
+                      const qty =
+                        p.quantity != null && p.unit
+                          ? `${p.quantity}${esc(p.unit)}`
+                          : p.quantity != null
+                            ? String(p.quantity)
+                            : '수량 없음(상태만)';
+                      const loc = LOCATIONS.find((l) => l.id === p.location)?.label || p.location;
+                      return `<label class="proposal"><input type="checkbox" name="order-ready" value="${idx}" checked /><span><strong>${esc(p.name)}</strong> · ${esc(qty)} · ${esc(loc)} · 충분함</span></label>`;
+                    })
+                    .join('')
+                : '<p class="empty">바로 등록할 항목이 없어요.</p>'
+            }
+            ${
+              paste.needsClarify.length
+                ? `<h3 class="subhead">확인이 필요해요</h3>
+                <p class="hint">상세 옵션·용량을 짧게 적어 주세요. 예: 1kg, 물냉</p>
+                ${paste.needsClarify
+                  .map(
+                    (p, idx) => `<div class="clarify-row" data-clarify-idx="${idx}">
+                      <p><strong>${esc(p.name)}</strong> <small>${esc(p.clarifyReason || '')}</small></p>
+                      <p class="fine muted-src">${esc(p.sourceText)}</p>
+                      <div class="row-actions">
+                        <input name="clarify-${idx}" maxlength="40" placeholder="1kg / 옵션명" aria-label="${esc(p.name)} 보완" />
+                        <button type="button" class="secondary" data-act="clarify-order" data-idx="${idx}">반영</button>
+                      </div>
+                    </div>`,
+                  )
+                  .join('')}`
+                : ''
+            }
+            ${
+              paste.ready.length
+                ? `<button type="button" class="primary block" data-act="apply-order-paste">선택한 항목 재고에 등록</button>`
+                : ''
+            }
+            <button type="button" class="ghost block" data-act="clear-order-paste">붙여넣기 닫기</button>
+          </section>`
+            : ''
+        }
+        <form class="manual-add" data-form="add-inventory">
+          <p class="hint">분류는 이름으로 자동 지정돼요. 틀리면 수정에서 바꾸세요.</p>
+          <div class="form-grid">
+            <label>이름<input name="name" required maxlength="80" placeholder="브로콜리, 과자, 휴지…" /></label>
+            <label>위치<select name="location">${LOCATIONS.map((l) => `<option value="${l.id}">${l.label}</option>`).join('')}</select></label>
+            <label>상태<select name="status">${STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('')}</select></label>
+            <label>수량(선택)<input name="quantity" type="number" min="0" step="any" /></label>
+            <label>단위<input name="unit" maxlength="12" placeholder="개" /></label>
+          </div>
+          <button type="submit" class="primary block">재고 등록</button>
+        </form>`;
     return `
-      <p class="lede">정확한 무게는 필요할 때만. 상태만으로도 장보기와 연결됩니다.</p>
-      <form class="manual-add order-paste" data-form="order-paste">
-        <p class="hint">네이버페이·마이쇼핑 주문 화면을 복사해 붙여 넣으면 재고 이름으로 정리해 드려요. 승인 전에 저장하지 않아요.</p>
-        <p class="hint"><a href="${esc(NAVER_PAY_HISTORY_URL)}" target="_blank" rel="noopener noreferrer">네이버페이 주문·결제내역 바로가기</a></p>
-        <label class="block-label">주문 내역 붙여넣기
-          <textarea name="paste" rows="5" placeholder="결제완료&#10;[KF365] 무항생제 달걀 XL(특란) 40구…"></textarea>
-        </label>
-        <button type="submit" class="secondary block">붙여넣기 분석</button>
-      </form>
-      ${
-        paste
-          ? `<section class="panel proposals" data-order-paste-result>
-          <h2>재고에 넣을까요?</h2>
-          ${
-            paste.ready.length
-              ? paste.ready
-                  .map((p, idx) => {
-                    const qty =
-                      p.quantity != null && p.unit
-                        ? `${p.quantity}${esc(p.unit)}`
-                        : p.quantity != null
-                          ? String(p.quantity)
-                          : '수량 없음(상태만)';
-                    const loc = LOCATIONS.find((l) => l.id === p.location)?.label || p.location;
-                    return `<label class="proposal"><input type="checkbox" name="order-ready" value="${idx}" checked /><span><strong>${esc(p.name)}</strong> · ${esc(qty)} · ${esc(loc)} · 충분함</span></label>`;
-                  })
-                  .join('')
-              : '<p class="empty">바로 등록할 항목이 없어요.</p>'
-          }
-          ${
-            paste.needsClarify.length
-              ? `<h3 class="subhead">확인이 필요해요</h3>
-              <p class="hint">상세 옵션·용량을 짧게 적어 주세요. 예: 1kg, 물냉</p>
-              ${paste.needsClarify
-                .map(
-                  (p, idx) => `<div class="clarify-row" data-clarify-idx="${idx}">
-                    <p><strong>${esc(p.name)}</strong> <small>${esc(p.clarifyReason || '')}</small></p>
-                    <p class="fine muted-src">${esc(p.sourceText)}</p>
-                    <div class="row-actions">
-                      <input name="clarify-${idx}" maxlength="40" placeholder="1kg / 옵션명" aria-label="${esc(p.name)} 보완" />
-                      <button type="button" class="secondary" data-act="clarify-order" data-idx="${idx}">반영</button>
-                    </div>
-                  </div>`,
-                )
-                .join('')}`
-              : ''
-          }
-          ${
-            paste.ready.length
-              ? `<button type="button" class="primary block" data-act="apply-order-paste">선택한 항목 재고에 등록</button>`
-              : ''
-          }
-          <button type="button" class="ghost block" data-act="clear-order-paste">붙여넣기 닫기</button>
-        </section>`
-          : ''
-      }
-      <form class="manual-add" data-form="add-inventory">
-        <p class="hint">분류는 이름으로 자동 지정돼요. 틀리면 수정(✎)에서 바꾸세요.</p>
-        <div class="form-grid">
-          <label>이름<input name="name" required maxlength="80" placeholder="브로콜리, 과자, 휴지…" /></label>
-          <label>위치<select name="location">${LOCATIONS.map((l) => `<option value="${l.id}">${l.label}</option>`).join('')}</select></label>
-          <label>상태<select name="status">${STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('')}</select></label>
-          <label>수량(선택)<input name="quantity" type="number" min="0" step="any" /></label>
-          <label>단위<input name="unit" maxlength="12" placeholder="개" /></label>
+      <div class="inv-screen" data-inv-screen>
+      <section class="panel inv-panel" data-inv-list-panel>
+        <div class="inv-toolbar" role="search">
+          <input type="search" name="inv-query" value="${esc(invQuery)}" placeholder="검색" maxlength="40" autocomplete="off" aria-label="재고 검색" />
+          <select name="inv-location" aria-label="위치 필터">
+            <option value="all" ${invFilterLocation === 'all' ? 'selected' : ''}>위치</option>
+            ${LOCATIONS.map(
+              (l) =>
+                `<option value="${l.id}" ${invFilterLocation === l.id ? 'selected' : ''}>${esc(locationLabel(l.id))}</option>`,
+            ).join('')}
+          </select>
+          <select name="inv-status" aria-label="상태 필터">
+            <option value="all" ${invFilterStatus === 'all' ? 'selected' : ''}>상태</option>
+            ${STATUSES.map(
+              (s) =>
+                `<option value="${s.id}" ${invFilterStatus === s.id ? 'selected' : ''}>${esc(INV_STATUS_SHORT[s.id] || s.label)}</option>`,
+            ).join('')}
+          </select>
+          <select name="inv-sort" aria-label="정렬">
+            <option value="name" ${invSort === 'name' ? 'selected' : ''}>이름순</option>
+            <option value="status" ${invSort === 'status' ? 'selected' : ''}>상태순</option>
+            <option value="location" ${invSort === 'location' ? 'selected' : ''}>위치순</option>
+            <option value="updated" ${invSort === 'updated' ? 'selected' : ''}>최근순</option>
+          </select>
+          <button type="button" class="secondary inv-tools-btn" data-act="inv-tools-toggle" aria-expanded="${toolsOpen ? 'true' : 'false'}" data-inv-tools-btn>${toolsOpen ? '닫기' : '등록'}</button>
         </div>
-        <button type="submit" class="primary block">재고 등록</button>
-      </form>
-      ${byLoc
-        .map(
-          (loc) => `<section class="panel"><h2>${loc.label}</h2>${
-            loc.items.length
-              ? `<ul class="inv-list">${loc.items.map((item) => inventoryRow(item)).join('')}</ul>`
-              : '<p class="empty">비어 있어요.</p>'
-          }</section>`,
-        )
-        .join('')}`;
+        <p class="hint inv-count" data-inv-count>${filtered.length}개${
+          filtered.length !== state.inventory.length ? ` · 전체 ${state.inventory.length}` : ''
+        } · 눌러서 상세</p>
+        ${
+          filtered.length
+            ? `<ul class="inv-list compact" data-inv-compact>${filtered.map((item) => inventoryRow(item)).join('')}</ul>`
+            : '<p class="empty">맞는 재고가 없어요.</p>'
+        }
+      </section>
+      ${toolsOpen ? `<section class="panel inv-tools-body" data-inv-tools>${toolsBody}</section>` : ''}
+      </div>`;
   }
 
   function inventoryRow(item) {
     if (editingInventoryId === item.id) {
-      return `<li class="inv-row edit">
+      return `<li class="inv-row edit open" data-status="${esc(item.status)}">
         <form data-form="edit-inventory" data-id="${item.id}">
           <input name="name" value="${esc(item.name)}" required maxlength="80" aria-label="이름" />
           <div class="form-grid compact">
@@ -1306,24 +1358,31 @@ export function createApp(root) {
         </form>
       </li>`;
     }
-    const statusShort = { enough: '충분', low: '부족', out: '없음', unknown: '모름' };
-    const meta =
+    const open = expandedInventoryId === item.id;
+    const detailId = `inv-detail-${item.id}`;
+    const st = statusLabel(item.status);
+    const loc = locationLabel(item.location);
+    const qtyLine =
       item.quantity != null
         ? `${item.quantity}${esc(item.unit || '')} · ${esc(catLabel(item.category))}`
         : `수량 미확인 · ${esc(catLabel(item.category))}`;
-    return `<li class="inv-row" data-status="${esc(item.status)}">
-      <div class="inv-main">
-        <strong>${esc(item.name)}</strong>
-        <small>${meta}</small>
+    return `<li class="inv-row compact ${open ? 'open' : ''}" data-status="${esc(item.status)}" data-id="${esc(item.id)}">
+      <button type="button" class="inv-summary" data-act="inv-toggle" data-id="${esc(item.id)}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${detailId}">
+        <span class="inv-name">${esc(item.name)}</span>
+        <span class="inv-loc">${esc(loc)}</span>
+        <span class="inv-status" data-status="${esc(item.status)}">${esc(st)}</span>
+      </button>
+      <div class="inv-detail" id="${detailId}" ${open ? '' : 'hidden'}>
+        <p class="inv-qty"><small>${qtyLine}</small></p>
+        <div class="status-chips inv-status-chips" role="group" aria-label="${esc(item.name)} 상태">${STATUSES.map(
+          (s) =>
+            `<button type="button" class="${item.status === s.id ? 'on' : ''}" data-act="inv-status" data-id="${item.id}" data-status="${s.id}" aria-pressed="${item.status === s.id ? 'true' : 'false'}">${esc(INV_STATUS_SHORT[s.id] || s.label)}</button>`,
+        ).join('')}</div>
+        <div class="row-actions">
+          <button type="button" class="secondary" data-act="inv-edit" data-id="${item.id}">수정</button>
+          <button type="button" class="ghost danger" data-act="inv-delete" data-id="${item.id}">삭제</button>
+        </div>
       </div>
-      <div class="row-actions">
-        <button type="button" class="icon" data-act="inv-edit" data-id="${item.id}" aria-label="수정">✎</button>
-        <button type="button" class="icon danger" data-act="inv-delete" data-id="${item.id}" aria-label="삭제">✕</button>
-      </div>
-      <div class="status-chips inv-status-chips" role="group" aria-label="${esc(item.name)} 상태">${STATUSES.map(
-        (s) =>
-          `<button type="button" class="${item.status === s.id ? 'on' : ''}" data-act="inv-status" data-id="${item.id}" data-status="${s.id}" aria-pressed="${item.status === s.id ? 'true' : 'false'}" title="${esc(s.label)}">${statusShort[s.id] || s.label}</button>`,
-      ).join('')}</div>
     </li>`;
   }
 
@@ -2139,9 +2198,53 @@ export function createApp(root) {
         }
       };
     }
+    const invToolsToggle = root.querySelector('[data-act=inv-tools-toggle]');
+    if (invToolsToggle) {
+      invToolsToggle.onclick = () => {
+        invToolsOpen = !invToolsToggle.matches('[aria-expanded="true"]');
+        render();
+      };
+    }
+    const invQueryInput = root.querySelector('[name=inv-query]');
+    if (invQueryInput) {
+      invQueryInput.oninput = () => {
+        invQuery = String(invQueryInput.value || '');
+        render();
+        const again = root.querySelector('[name=inv-query]');
+        if (again) {
+          again.focus();
+          const len = again.value.length;
+          again.setSelectionRange(len, len);
+        }
+      };
+    }
+    root.querySelectorAll('[name=inv-location], [name=inv-status], [name=inv-sort]').forEach((el) => {
+      el.onchange = () => {
+        if (el.name === 'inv-location') invFilterLocation = el.value;
+        if (el.name === 'inv-status') invFilterStatus = el.value;
+        if (el.name === 'inv-sort') invSort = el.value;
+        render();
+      };
+    });
+    root.querySelectorAll('[data-act=inv-toggle]').forEach((el) => {
+      el.onclick = () => {
+        const id = el.dataset.id;
+        expandedInventoryId = expandedInventoryId === id ? null : id;
+        editingInventoryId = null;
+        render();
+        if (expandedInventoryId === id) {
+          requestAnimationFrame(() => {
+            root
+              .querySelector(`.inv-detail:not([hidden]) [data-act=inv-edit], .inv-detail:not([hidden]) .inv-status-chips button`)
+              ?.focus?.();
+          });
+        }
+      };
+    });
     root.querySelectorAll('[data-act=inv-edit]').forEach((el) => {
       el.onclick = () => {
         editingInventoryId = el.dataset.id;
+        expandedInventoryId = el.dataset.id;
         editingId = null;
         render();
       };
@@ -2161,18 +2264,23 @@ export function createApp(root) {
             '재고를 수정했어요.',
           );
           editingInventoryId = null;
+          expandedInventoryId = form.dataset.id;
         } catch (err) {
           setToast(err.message);
         }
       };
     });
     root.querySelectorAll('[data-act=inv-status]').forEach((el) => {
-      el.onclick = () => commit((s) => setInventoryStatus(s, el.dataset.id, el.dataset.status));
+      el.onclick = () => {
+        expandedInventoryId = el.dataset.id;
+        commit((s) => setInventoryStatus(s, el.dataset.id, el.dataset.status));
+      };
     });
     root.querySelectorAll('[data-act=inv-delete]').forEach((el) => {
       el.onclick = () => {
         if (!confirm('재고에서 삭제할까요?')) return;
         if (editingInventoryId === el.dataset.id) editingInventoryId = null;
+        if (expandedInventoryId === el.dataset.id) expandedInventoryId = null;
         commit((s) => removeInventory(s, el.dataset.id), '삭제했어요.');
       };
     });
