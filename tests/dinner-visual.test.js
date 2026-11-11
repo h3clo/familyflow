@@ -62,7 +62,21 @@ test('sauceKeyFromName maps catalog names', () => {
   assert.equal(sauceKeyFromName('토마토 양파 소스'), 'tomato-onion');
   assert.equal(sauceKeyFromName('양꼬치 양념'), 'lamb-skewer');
   assert.equal(sauceKeyFromName('폰즈 소스'), 'ponzu');
+  assert.equal(sauceKeyFromName('참깨 간장 소스'), 'sesame-soy');
+  assert.equal(sauceKeyFromName('참깨 소스'), 'sesame');
   assert.equal(sauceKeyFromName('없는소스'), null);
+});
+
+test('missing prebake stem falls back to pattern-only file', () => {
+  const v = resolveDinnerVisual(
+    {
+      cookingPatterns: [{ id: 'p1', name: '야채구이', method: 'roast' }],
+      sauces: [{ id: 's1', name: '부추장', visualKey: 'buchujang', forPatterns: ['야채구이'] }],
+    },
+    { patternName: '야채구이', sauceName: '부추장' },
+  );
+  // roast-buchujang.jpg is not shipped — use roast.jpg instead of a 404.
+  assert.match(v.imageSrc, /dinner\/roast\.jpg\?v=/);
 });
 
 test('shortSauceName strips parenthetical notes', () => {
