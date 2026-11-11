@@ -10,6 +10,11 @@ import {
   compareDinnerScores,
 } from './dinnerRank.js';
 import { resolveDinnerVisual, dinnerImageFile } from './dinnerVisual.js';
+import {
+  resolveSauceComponentStatuses,
+  shoppingNeedsFromStatuses,
+  proteinStatusRow,
+} from './inventoryMatch.js';
 
 const PROTEIN_RE =
   /닭다리|닭고기|닭|우삼겹|대패|목살|삼겹|돼지|소고기|연어|고등어|삼치|두부|고기|계란|달걀/;
@@ -103,16 +108,16 @@ export function buildDinnerHomeOffer(state, opts = {}) {
     },
   ];
 
-  if (pick.shopping) {
+  for (const need of pick.shoppingNeeds || []) {
     ops.push({
       op: 'shopping.add',
       payload: {
-        name: pick.shopping.name,
-        quantity: pick.shopping.quantity,
-        unit: pick.shopping.unit,
-        priority: 'must',
-        category: 'food',
-        inventoryId: pick.shopping.inventoryId || null,
+        name: need.name,
+        quantity: need.quantity,
+        unit: need.unit,
+        priority: need.priority || 'must',
+        category: need.category || 'food',
+        inventoryId: need.inventoryId || null,
         skipIfExists: true,
       },
     });
@@ -296,23 +301,31 @@ export function listDinnerCandidates(state) {
         if (recent) reasons.push('최근 같은 재료 · 다른 후보도 볼 수 있어요');
         else if (recentProteins.size) reasons.push('최근 식단에 안 나온 재료');
 
-        let shopping = null;
-        if (source.stockStatus === 'out' || source.stockStatus === 'low') {
-          shopping = {
-            name: source.name,
-            quantity: 1,
-            unit: guessUnit(source.name),
-            inventoryId: source.inventoryId,
-          };
-          reasons.push(
-            source.stockStatus === 'out'
-              ? `장보기 제안 · ${source.name} (없음)`
-              : `장보기 제안 · ${source.name} (부족)`,
-          );
+        const statusRows = [proteinStatusRow(source)];
+        if (sauce) {
+          const sauceRows = resolveSauceComponentStatuses(state, sauce);
+          for (const row of sauceRows) {
+            statusRows.push(row);
+            if (row.optional) continue;
+            if (row.status === 'missing') {
+              unknowns.push(`소스 재료 ‘${row.name}’ 재고 미등록`);
+            } else if (row.status === 'unknown') {
+              unknowns.push(`소스 재료 ‘${row.matchedName || row.name}’ 상태 모름`);
+            } else if (row.status === 'low') {
+              reasons.push(`소스 재료 · ${row.matchedName || row.name} 부족`);
+            } else if (row.status === 'out') {
+              reasons.push(`소스 재료 · ${row.matchedName || row.name} 없음`);
+            }
+          }
         }
 
-        if (sauce) {
-          unknowns.push(`소스(${sauce.name}) 재료 재고는 확인하지 않음`);
+        const shoppingNeeds = shoppingNeedsFromStatuses(statusRows, { guessUnit });
+        for (const need of shoppingNeeds) {
+          reasons.push(
+            need.status === 'out'
+              ? `장보기 제안 · ${need.name} (없음)`
+              : `장보기 제안 · ${need.name} (부족)`,
+          );
         }
 
         const title = formatDinnerOfferTitle({
@@ -345,7 +358,9 @@ export function listDinnerCandidates(state) {
           sauceName: sauce?.name || '',
           reasons,
           unknowns,
-          shopping,
+          shoppingNeeds,
+          /** @deprecated use shoppingNeeds[0] — kept for older tests */
+          shopping: shoppingNeeds[0] || null,
           stockStatus: source.stockStatus,
           effort,
           recent,

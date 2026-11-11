@@ -1,5 +1,5 @@
 import { ensureActiveList } from './shopping.js';
-import { suggestToday } from './meals.js';
+import { suggestToday, buildWeekShoppingProposal } from './meals.js';
 import { inferCategory } from './quick-add.js';
 import {
   createProposal,
@@ -173,6 +173,11 @@ export function generateSuggestions(state, now = Date.now()) {
         ops: [{ op: 'meals.confirm_week', payload: { planId: state.mealPlan.id } }],
       }),
     );
+  }
+
+  const weekShop = buildWeekShoppingProposal(state);
+  if (weekShop && state.mealPlan) {
+    raw.push(weekShop);
   }
 
   const listEmpty = !(list.items || []).some((i) => !i.checked);

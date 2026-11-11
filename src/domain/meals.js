@@ -1,4 +1,13 @@
 import { uid } from '../lib/id.js';
+import { createProposal, openShoppingNames } from './proposals.js';
+import { ensureActiveList } from './shopping.js';
+import { inferCategory } from './quick-add.js';
+import {
+  normalizeItemName,
+  findInventoryByName,
+  resolveSauceComponentStatuses,
+  shoppingNeedsFromStatuses,
+} from './inventoryMatch.js';
 
 /** Kept for week schema / future breakfast·lunch recommendations. */
 const MEAL_TYPES = [
@@ -115,6 +124,143 @@ export function draftWeek(state) {
     });
   });
   return plan;
+}
+
+/**
+ * Collect confirmed low/out needs from this week's dinner slots
+ * (protein + sauce components). Skips unknown/missing — no qty inventing.
+ */
+export function weekDinnerShortages(state) {
+  const plan = state?.mealPlan;
+  if (!plan?.days?.length) return [];
+
+  const rows = [];
+  const seenProtein = new Set();
+
+  for (const day of plan.days) {
+    for (const slot of day.slots || []) {
+      if (slot.mealType !== 'dinner') continue;
+      if (!slot.protein && !slot.sauceId) continue;
+
+      if (slot.protein) {
+        const key = normalizeItemName(slot.protein);
+        if (!seenProtein.has(key)) {
+          seenProtein.add(key);
+          const item = findInventoryByName(state, slot.protein);
+          if (item) {
+            rows.push({
+              name: slot.protein,
+              matchedName: item.name,
+              status: item.status,
+              inventoryId: item.id,
+              optional: false,
+              item,
+            });
+          } else {
+            // Untracked protein: do not invent shopping — same as home untracked.
+            rows.push({
+              name: slot.protein,
+              matchedName: slot.protein,
+              status: 'missing',
+              inventoryId: null,
+              optional: false,
+              item: null,
+            });
+          }
+        }
+      }
+
+      if (slot.sauceId) {
+        const sauce = (state.sauces || []).find((s) => s.id === slot.sauceId);
+        if (sauce) {
+          for (const row of resolveSauceComponentStatuses(state, sauce)) {
+            rows.push(row);
+          }
+        }
+      }
+    }
+  }
+
+  const list = ensureActiveList(state);
+  const onList = openShoppingNames(list);
+  return shoppingNeedsFromStatuses(rows).filter(
+    (need) => !onList.has(normalizeItemName(need.name)),
+  );
+}
+
+/**
+ * App-proposed shopping top-up for week dinner shortages (ActionProposal).
+ * Returns null when nothing to add.
+ */
+export function buildWeekShoppingProposal(state) {
+  const needs = weekDinnerShortages(state);
+  if (!needs.length) return null;
+
+  const ops = needs.map((need) => ({
+    op: 'shopping.add',
+    payload: {
+      name: need.name,
+      quantity: need.quantity,
+      unit: need.unit,
+      priority: need.priority || 'must',
+      category: need.category || inferCategory(need.name),
+      inventoryId: need.inventoryId || null,
+      skipIfExists: true,
+    },
+  }));
+
+  const names = needs.map((n) => n.name).slice(0, 4).join(' · ');
+  const more = needs.length > 4 ? ` 외 ${needs.length - 4}` : '';
+
+  return createProposal({
+    source: 'rules',
+    key: `week-shop-${state.mealPlan?.id || 'none'}-${needs.map((n) => normalizeItemName(n.name)).sort().join('-')}`,
+    priority: 25,
+    title: `주간 식단 부족한 재료 ${needs.length}개`,
+    reason: `이번 주 저녁에 확인된 부족/없음: ${names}${more}. 이미 목록에 있는 품목은 건너뛰어요.`,
+    actionLabel: '장보기 미리보기',
+    ops,
+  });
+}
+
+/**
+ * View model for Meals › 오늘 — same source of truth as Home (`buildDinnerHomeOffer`).
+ * Confirm CTA stays on Home; Meals is read-aligned.
+ */
+export function mealsTodayViewModel(dinnerHome) {
+  if (!dinnerHome) {
+    return { status: 'empty', title: '', protein: null, sauceName: '', hint: '', stockLabel: null };
+  }
+  if (dinnerHome.status === 'confirmed') {
+    const d = dinnerHome.dinner || {};
+    return {
+      status: 'confirmed',
+      title: d.title || '오늘 저녁',
+      protein: d.protein || null,
+      sauceName: d.sauceName || '',
+      hint: '홈에서 확정한 오늘 저녁이에요.',
+      stockLabel: null,
+    };
+  }
+  if (dinnerHome.status === 'offer') {
+    const o = dinnerHome.offer || {};
+    return {
+      status: 'offer',
+      title: o.title || '오늘 저녁',
+      protein: o.protein || null,
+      sauceName: o.sauceName || '',
+      hint: '확정은 홈에서 「이대로」로 해요. 여기는 같은 후보를 보여 줘요.',
+      stockLabel: o.stockLabel || null,
+    };
+  }
+  return {
+    status: 'empty',
+    title: '추천할 저녁이 부족해요',
+    protein: null,
+    sauceName: '',
+    hint: dinnerHome.emptyReason || '',
+    stockLabel: null,
+  };
 }
 
 function todayKey(d = new Date()) {

@@ -84,11 +84,15 @@
 ## 5. ActionProposal 승인 정책
 
 - 규칙·AI는 도메인 state를 **직접 변경하지 않는다.**
-- 유일한 저장 경로: `createProposal` / 검증 → `previewProposal` → **사용자 승인** → `applyProposal` (원자·idempotent).
+- 앱이 **먼저 제안**한 변경: `createProposal` → `previewProposal` → **사용자 승인** → `applyProposal` (원자·idempotent).
+- 사용자가 **직접** 입력·저장·체크·삭제한 조작은 그 조작 자체를 명시적 승인으로 본다 (중복 확인 팝업을 불필요하게 추가하지 않음).
+- 주문 붙여넣기는 분석 → 사용자가 항목을 고르고 등록하는 절차를 유지 (추정 자동 저장 금지).
 - `sensitivity: personal_health` 거부. 지원 op만 화이트리스트.
 - 미리보기는 clone만 사용. 거절/보류는 dismiss 메타로 스누즈 가능.
+- 재고가 불확실하면(`unknown`/미등록) 수량을 추정하지 않는다. 장보기 제안은 **확인된 low/out**만.
 
-상세: [ACTION_PROPOSAL.md](ACTION_PROPOSAL.md). 결정일: 2026-11-09 (S2).
+상세: [ACTION_PROPOSAL.md](ACTION_PROPOSAL.md). 결정일: 2026-11-09 (S2).  
+변경: 2026-11-12 — 직접 조작 vs 앱 제안 승인 구분·중복 팝업 금지·불확실 재고 추정 금지 명시.
 
 ## 6. UX / UI — 승인 상태
 
@@ -124,6 +128,7 @@
 변경: 2026-11-11 — 파괴적 로컬 점검은 URL `?sandbox&device=작업이름`으로 상태·defer-auth·auth·cloud cache 키를 접두사 격리한다. `device`만 있고 `sandbox` 없으면 비활성. 운영 공용 계정 E2E는 하지 않고 격리 QA 계정 + 체크리스트(`docs/SYNC_E2E_CHECKLIST.md`)로 점검한다.
 변경: 2026-11-11 — 홈 「바꾸기」는 **히어로 JPG가 실제로 바뀌는** 후보만 순회(패턴×소스 접기 + 동일 파일 제거). 패턴에 맞는 `forPatterns` 소스가 없으면 `sauces[0]`으로 떨어지지 않는다(404·사진 고착 원인). 없는 prebake stem은 패턴 기본 JPG로 폴백.
 변경: 2026-11-11 — 「바꾸기」순서는 점수만 나열하지 않고 **패턴이 번갈아** 나오도록 diversify(연속 탭 시 구이만 반복되는 체감 완화). 히어로 사진은 소스 식별·징그러운 텍스처 회피를 우선.
+변경: 2026-11-12 — 식단 「오늘」은 `buildDinnerHomeOffer`와 동일 소스. 홈 확정 후 별도 `suggestToday` 카드를 보여 주지 않음. 소스 `components`의 **확인된 low/out**도 저녁·주간 장보기 제안에 포함(미등록/모름은 안내만). 주간 확정은 사용자 탭으로 status 반영 후, 부족 재료는 ActionProposal로 기존 장보기 목록에 연결.
 
 원칙 vs 미확정 분리: [DESIGN_SYSTEM.md](DESIGN_SYSTEM.md).
 
