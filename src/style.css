@@ -722,7 +722,8 @@ textarea {
 [data-form=household] input,
 .cloud-auth input,
 .chat-form textarea,
-.quick-add textarea {
+.quick-add textarea,
+.order-paste textarea {
   width: 100%;
   min-width: 0;
   min-height: 44px;
@@ -734,12 +735,29 @@ textarea {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 1px 2px rgba(15, 23, 42, 0.04);
   transition: border-color 160ms var(--ease), box-shadow 160ms var(--ease);
 }
+.order-paste textarea { min-height: 120px; resize: vertical; }
+.order-paste .block-label { display: block; margin: 10px 0 8px; font-size: 0.9rem; font-weight: 600; }
+.clarify-row {
+  margin: 10px 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.clarify-row .muted-src {
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+.clarify-row .row-actions { gap: 8px; align-items: center; }
+.clarify-row input { flex: 1; min-width: 0; min-height: 44px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.panel.proposals .subhead { margin: 16px 0 6px; font-size: 1rem; }
 .form-grid input:focus,
 .budget-form input:focus,
 [data-form=household] input:focus,
 .cloud-auth input:focus,
 .chat-form textarea:focus,
-.quick-add textarea:focus {
+.quick-add textarea:focus,
+.order-paste textarea:focus {
   outline: none;
   border-color: color-mix(in srgb, var(--brand) 55%, var(--line));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent);
