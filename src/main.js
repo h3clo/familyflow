@@ -1,7 +1,11 @@
 import './style.css';
+import { initStorageScope } from './lib/storageScope.js';
 import { createApp } from './app.js';
 import { watchAppUpdates } from './lib/appUpdate.js';
 import { installScrollTopGuards, pinWindowTop } from './lib/scrollLock.js';
+
+// Before any localStorage / auth reads — honor ?sandbox&device=
+initStorageScope();
 
 // Kill iOS phantom scroll-before-paint / scroll restoration.
 installScrollTopGuards();

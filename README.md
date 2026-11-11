@@ -36,6 +36,10 @@ npm run dev
 
 브라우저: http://127.0.0.1:5174/
 
+파괴적 로컬 점검 시 저장 격리:
+`http://127.0.0.1:5174/?sandbox&device=작업이름` (상태·인증·캐시 키가 기본 버킷과 분리됨).
+다기기 sync 수동 표: [docs/SYNC_E2E_CHECKLIST.md](docs/SYNC_E2E_CHECKLIST.md).
+
 테스트 개수는 고정 규칙이 아니다. 변경 검증 시 `npm test` / `npm run build`를 그 시점에 실행한다.
 
 ## Supabase

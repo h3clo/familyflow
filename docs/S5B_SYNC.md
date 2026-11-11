@@ -48,4 +48,6 @@ pull/push 해도 기기 카탈로그를 지우거나 다른 집 데이터와 섞
 - `src/cloud/sync.js` — push/pull + 삭제 정합
 - `src/cloud/syncRuntime.js` — 상태·오프라인·Realtime
 - `src/cloud/sessionScope.js` — 계정/가구 스코프 캐시
+- `src/lib/storageScope.js` — `?sandbox&device=` 로컬 저장·인증 키 격리
+- 수동 점검 표: [SYNC_E2E_CHECKLIST.md](SYNC_E2E_CHECKLIST.md)
 - `supabase/migrations/202611090004_s5b_family_profiles_sync.sql`

@@ -124,7 +124,9 @@ test('sync runtime canWrite blocks offline cloud-primary', () => {
   assert.equal(rt.canWrite('local'), true);
 });
 
-test('cloud cache key scopes by user and household', () => {
+test('cloud cache key scopes by user and household', async () => {
+  const { resetStorageScopeForTests } = await import('../src/lib/storageScope.js');
+  resetStorageScopeForTests();
   assert.equal(cloudCacheKey('u1', 'h1'), 'familyflow-cache:u1:h1');
   assert.equal(cloudCacheKey(null, 'h1'), null);
 });

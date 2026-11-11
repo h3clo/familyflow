@@ -4,11 +4,17 @@
  * Not a cloud credential — device preference only.
  */
 
-const KEY = 'familyflow-defer-auth';
+import { scopedStorageKey } from './storageScope.js';
+
+const DEFER_BASE = 'familyflow-defer-auth';
+
+function deferKey() {
+  return scopedStorageKey(DEFER_BASE);
+}
 
 export function readDeferAuth() {
   try {
-    return localStorage.getItem(KEY) === '1';
+    return localStorage.getItem(deferKey()) === '1';
   } catch {
     return false;
   }
@@ -16,8 +22,8 @@ export function readDeferAuth() {
 
 export function writeDeferAuth(on) {
   try {
-    if (on) localStorage.setItem(KEY, '1');
-    else localStorage.removeItem(KEY);
+    if (on) localStorage.setItem(deferKey(), '1');
+    else localStorage.removeItem(deferKey());
   } catch {
     /* ignore quota / private mode */
   }

@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readDeferAuth, writeDeferAuth, hasLocalHouseholdActivity } from '../src/lib/deferAuth.js';
+import { resetStorageScopeForTests } from '../src/lib/storageScope.js';
 
 test('defer auth preference round-trips in localStorage', () => {
+  resetStorageScopeForTests();
   const store = new Map();
   globalThis.localStorage = {
     getItem: (k) => (store.has(k) ? store.get(k) : null),
@@ -13,6 +15,7 @@ test('defer auth preference round-trips in localStorage', () => {
   assert.equal(readDeferAuth(), false);
   writeDeferAuth(true);
   assert.equal(readDeferAuth(), true);
+  assert.equal(store.get('familyflow-defer-auth'), '1');
   writeDeferAuth(false);
   assert.equal(readDeferAuth(), false);
 });

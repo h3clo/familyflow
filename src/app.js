@@ -79,8 +79,11 @@ import {
   isQuietPullSuccess,
 } from './cloud/bootstrap.js';
 import { uid } from './lib/id.js';
+import { getStorageScope, sandboxBadgeText } from './lib/storageScope.js';
 
 export function createApp(root) {
+  const sandboxScope = getStorageScope();
+  const sandboxLabel = sandboxBadgeText(sandboxScope);
   let state = bootPrefersScopedCache(bootState());
   ensureActiveList(state);
   if (!state.settings.view) state.settings.view = 'home';
@@ -514,6 +517,7 @@ export function createApp(root) {
             <h1>${authGate ? '우리 집 시작하기' : viewTitle(view)}</h1>
           </div>
           <div class="top-meta">
+            ${sandboxChip()}
             ${authGate ? '' : settingsBtn()}
           </div>
         </header>`
@@ -562,6 +566,14 @@ export function createApp(root) {
         <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
       </svg>
     </button>`;
+  }
+
+  function sandboxChip(opts = {}) {
+    if (!sandboxLabel) return '';
+    const onMedia = opts.onMedia ? ' on-media' : '';
+    return `<span class="sandbox-badge${onMedia}" title="저장 키 격리 중 · 기본 기기 데이터와 섞이지 않아요">${esc(
+      sandboxLabel,
+    )}</span>`;
   }
 
   function tabIcon(kind) {
@@ -914,6 +926,7 @@ export function createApp(root) {
         <div class="dinner-media-top">
           <p class="dinner-brand">Family Flow</p>
           <div class="dinner-media-meta">
+            ${sandboxChip({ onMedia: true })}
             ${settingsBtn({ onMedia: true })}
           </div>
         </div>
@@ -1291,6 +1304,15 @@ export function createApp(root) {
       <section class="panel">
         <h2>데이터</h2>
         <p class="hint">기본은 이 기기 브라우저 저장입니다. 클라우드 복사는 로컬을 지우지 않아요. Haze Flow는 수정하지 않습니다.</p>
+        ${
+          sandboxScope.enabled
+            ? `<p class="hint"><strong>sandbox</strong> · device <code>${esc(
+                sandboxScope.device,
+              )}</code> — 상태·인증·캐시 키가 기본 버킷과 분리돼요. URL: <code>?sandbox&amp;device=${esc(
+                sandboxScope.device,
+              )}</code></p>`
+            : `<p class="hint">파괴적 점검은 <code>?sandbox&amp;device=작업이름</code>으로 저장을 격리한 뒤 하세요.</p>`
+        }
         <div class="row-actions wrap">
           <button type="button" class="ghost" data-act="export-json">JSON 내보내기</button>
           <button type="button" class="ghost" data-act="new-list">새 장보기 목록</button>
