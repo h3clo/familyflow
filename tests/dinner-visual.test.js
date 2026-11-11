@@ -22,7 +22,7 @@ test('maps 야채찜 + garlic soy to prebaked steam composite', () => {
     patternName: '야채찜',
     sauceName: '마늘 간장 소스',
   });
-  assert.match(v.imageSrc, /dinner\/steam-garlic-soy\.jpg\?v=.*20261111f/);
+  assert.match(v.imageSrc, /dinner\/steam-garlic-soy\.jpg\?v=.*20261111g/);
   assert.equal(v.sauceShortName, '마늘 간장 소스');
   assert.equal(v.sauceTextureSrc, null);
 });
