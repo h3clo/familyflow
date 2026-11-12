@@ -193,6 +193,8 @@ export function createApp(root) {
     }
   }
 
+  let pushInFlight = false;
+
   async function pushCloudQuiet() {
     if (!isCloudPrimary() || applyingRemote) return;
     if (!syncRuntime.isOnline()) {
@@ -200,6 +202,7 @@ export function createApp(root) {
       render();
       return;
     }
+    pushInFlight = true;
     syncRuntime.setStatus(SyncStatus.syncing, '클라우드에 저장 중…');
     render();
     try {
@@ -210,6 +213,8 @@ export function createApp(root) {
       syncRuntime.setStatus(SyncStatus.ok, '동기화 완료', { syncedAt: now, error: null });
     } catch (err) {
       syncRuntime.setStatus(SyncStatus.error, err.message || '동기화 실패', { error: err.message });
+    } finally {
+      pushInFlight = false;
     }
     render();
   }
@@ -230,6 +235,10 @@ export function createApp(root) {
   async function pullCloudQuiet({ reason = 'pull' } = {}) {
     if (!isCloudPrimary()) return { ok: false, skipped: true, reason: 'not-primary' };
     if (applyingRemote) return { ok: false, skipped: true, reason: 'busy' };
+    // Avoid clobbering a just-edited family note (or other local rows) before push lands.
+    if (pushInFlight || syncPushTimer) {
+      return { ok: false, skipped: true, reason: 'push-pending' };
+    }
     if (!syncRuntime.isOnline()) {
       syncRuntime.setStatus(SyncStatus.offline, '오프라인 — 이 기기 캐시를 보여 줘요');
       render();
@@ -1244,7 +1253,7 @@ export function createApp(root) {
           <p class="hint">네이버페이·마이쇼핑 주문 화면을 복사해 붙여 넣으면 재고 이름으로 정리해 드려요. 승인 전에 저장하지 않아요.</p>
           <p class="hint"><a href="${esc(NAVER_PAY_HISTORY_URL)}" target="_blank" rel="noopener noreferrer">네이버페이 주문·결제내역 바로가기</a></p>
           <label class="block-label">주문 내역 붙여넣기
-            <textarea name="paste" rows="4" placeholder="결제완료&#10;[KF365] 무항생제 달걀 XL(특란) 40구…"></textarea>
+            <textarea name="paste" rows="4" placeholder="결제완료&#10;[KF365] 무항생제 달걀 XL(특란) 40구…">${esc(paste?.rawText || '')}</textarea>
           </label>
           <button type="submit" class="secondary block">붙여넣기 분석</button>
         </form>
@@ -1278,12 +1287,19 @@ export function createApp(root) {
                       <p><strong>${esc(p.name)}</strong> <small>${esc(p.clarifyReason || '')}</small></p>
                       <p class="fine muted-src">${esc(p.sourceText)}</p>
                       <div class="row-actions">
-                        <input name="clarify-${idx}" maxlength="40" placeholder="1kg / 옵션명" aria-label="${esc(p.name)} 보완" />
+                        <input name="clarify-${idx}" maxlength="40" placeholder="1kg / 옵션명" aria-label="${esc(p.name)} 보완" value="${esc(p.draftAnswer || '')}" />
                         <button type="button" class="secondary" data-act="clarify-order" data-idx="${idx}">반영</button>
                       </div>
                     </div>`,
                   )
                   .join('')}`
+                : ''
+            }
+            ${
+              paste.skipped?.length
+                ? `<details class="paste-skipped"><summary>건너뛴 ${paste.skipped.length}건 (취소·비식재료 등)</summary>
+                <ul class="fine">${paste.skipped.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>
+              </details>`
                 : ''
             }
             ${
@@ -2089,7 +2105,7 @@ export function createApp(root) {
         e.preventDefault();
         const text = String(new FormData(orderPasteForm).get('paste') || '');
         const parsed = parseOrderPaste(text);
-        orderPasteDraft = parsed;
+        orderPasteDraft = { ...parsed, rawText: text };
         if (!parsed.ready.length && !parsed.needsClarify.length) {
           setToast('주문 상품을 찾지 못했어요. 상품명이 보이게 복사해 주세요.');
         } else {
@@ -2107,9 +2123,11 @@ export function createApp(root) {
         const answer = input?.value || '';
         const item = orderPasteDraft.needsClarify[idx];
         if (!item) return;
+        item.draftAnswer = answer;
         const resolved = applyClarifyAnswer(item, answer);
         if (resolved.needsClarify) {
           setToast(resolved.clarifyReason || '용량을 예: 1kg 처럼 적어 주세요.');
+          render();
           return;
         }
         orderPasteDraft.needsClarify.splice(idx, 1);
@@ -2598,6 +2616,7 @@ export function createApp(root) {
         const fd = Object.fromEntries(new FormData(addMember));
         commit((s) => {
           s.members = s.members || [];
+          const now = new Date().toISOString();
           s.members.push({
             id: uid(),
             displayName: String(fd.displayName || '').trim(),
@@ -2605,6 +2624,7 @@ export function createApp(root) {
             role: fd.roleLabel === '관리자' ? 'owner' : 'member',
             note: String(fd.note || '').trim().slice(0, 120),
             sortOrder: s.members.length,
+            updatedAt: now,
           });
         }, '가족 프로필을 추가했어요.');
       };
@@ -2640,6 +2660,7 @@ export function createApp(root) {
           m.roleLabel = fd.roleLabel || m.roleLabel || '구성원';
           m.role = m.roleLabel === '관리자' ? 'owner' : 'member';
           m.note = String(fd.note || '').trim().slice(0, 120);
+          m.updatedAt = new Date().toISOString();
         }, '가족 프로필을 저장했어요.');
         editingMemberId = null;
       };

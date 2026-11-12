@@ -5,11 +5,11 @@
 
 ## 현재 시작점 (2026-11-12 Asia/Seoul)
 
-**방금 완료:** #45 흐름 정리 · #46 수량/매칭 정확성.
+**방금 완료:** 홈 UX 간소화(#47) · 재고 밀도/등록 개선(#48–#53).
 
-**지금 작업:** 홈 UX 간소화 — 저녁 확정 경로 클릭·중복 제안 축소 (`cursor/ux-simplify-c704`).
+**지금 작업:** #44에 main 병합 — `dinnerPending` 가드 복구 + 취향 메모 sync·주문 붙여넣기 UX 유지 (#54).
 
-**다음 행동 (한 가지):** CI 통과 후 머지·배포, 클릭 수 전후 보고.
+**다음 행동 (한 가지):** REQ-F-04·관련 회귀 통과 확인 후 #44 머지 판단.
 
 작업 기준 브랜치: 평소 `main`.  
 배포: https://h3clo.github.io/familyflow/
@@ -26,7 +26,8 @@
 | Pages SW 캐시 | 배포 | #18 network-first · PWA `build.json` 자동 갱신 |
 | `?sandbox&device=` 저장 격리 | 배포 | `src/lib/storageScope.js` |
 | 네이버페이 주문 붙여넣기 → 재고 | 배포 | #42 · `orderPaste.js` · DECISIONS §8 |
-| 홈↔식단 오늘 일관 · 소스 재료 · 주간 장보기 | PR | `inventoryMatch.js` · `mealsTodayViewModel` · `weekDinnerShortages` |
+| 가족 취향 메모 UI | 배포 | #43 · note 태그 ≤120자 |
+| 홈↔식단 오늘 일관 · 소스 재료 · 주간 장보기 | 배포 | #45+ · `inventoryMatch.js` · `mealsTodayViewModel` |
 
 ## 검증됨 vs 미검증
 
