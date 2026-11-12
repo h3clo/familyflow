@@ -175,11 +175,27 @@ test('swap does not collapse unrelated patterns onto sauces[0]', () => {
   );
 });
 
+test('single tracked protein does not lock every swap 곁들임', () => {
+  const state = seedState(createEmptyState());
+  state.inventory = [{ id: 'i1', name: '고등어', status: 'enough', location: 'fridge', category: 'food' }];
+  const swap = uniqueDinnerSwapList(state, listDinnerCandidates(state));
+  const proteins = [...new Set(swap.map((c) => c.protein))];
+  assert.ok(proteins.includes('고등어'));
+  assert.ok(proteins.length >= 3, `expected varied 곁들임, got ${proteins.join(',')}`);
+});
+
 test('out-of-stock protein includes shopping.add in proposal', () => {
   const state = baseState([{ id: 'i1', name: '고등어', status: 'out' }]);
-  const offer = buildDinnerHomeOffer(state);
+  const withFish = listDinnerCandidates(state).find((c) => c.protein === '고등어');
+  assert.ok(withFish);
+  assert.ok(withFish.shoppingNeeds?.some((n) => n.name === '고등어'));
+  // Swap may start on a starter 곁들임; find the 고등어 slot via altIndex.
+  const swap = uniqueDinnerSwapList(state, listDinnerCandidates(state));
+  const idx = swap.findIndex((c) => c.protein === '고등어');
+  assert.ok(idx >= 0);
+  const offer = buildDinnerHomeOffer(state, { altIndex: idx });
   assert.equal(offer.status, 'offer');
-  assert.ok(offer.offer.proposal.ops.some((op) => op.op === 'shopping.add'));
+  assert.ok(offer.offer.proposal.ops.some((op) => op.op === 'shopping.add' && op.payload.name === '고등어'));
 });
 
 test('이대로 apply confirms dinner after preview', () => {

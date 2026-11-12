@@ -8,6 +8,8 @@
 
 정책 요약: [DECISIONS.md](DECISIONS.md) §5.
 
+**직접 조작 vs 앱 제안 (2026-11-12):** 사용자가 탭·입력으로 저장/체크/삭제한 작업은 그 조작을 승인으로 본다. 앱이 계산한 변경(저녁 확정 복합 op, 주간 부족 재료 장보기, 규칙/AI 카드)만 이 파이프라인을 탄다. 불확실 재고(`unknown`/미등록)는 장보기 수량으로 추정하지 않는다.
+
 ## 객체 형태
 
 ```json
@@ -34,7 +36,7 @@
 
 | op | payload 요지 |
 | --- | --- |
-| `shopping.add` | `name`, `quantity`, `unit`, `priority`, `category`, optional `inventoryId`, `skipIfExists` |
+| `shopping.add` | `name`, `quantity` (양수 또는 **null**=수량 미확인), `unit`, `priority`, `category`, optional `inventoryId`, `skipIfExists` |
 | `shopping.remove_unchecked` | `name` (미체크 항목만 제거) |
 | `inventory.set_status` | `id`, `status` (`enough`/`low`/`out`/`unknown`) |
 | `inventory.upsert` | `name` + 재고 필드 |

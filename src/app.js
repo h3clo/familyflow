@@ -21,7 +21,20 @@ import {
   shoppingSuggestionsFromInventory,
   applyPurchaseToInventory,
 } from './domain/inventory.js';
-import { suggestToday, draftWeek } from './domain/meals.js';
+import {
+  filterInventory,
+  groupInventoryByLocation,
+  statusLabel,
+  formatInventoryNameQty,
+  repairOtherCategories,
+  INV_STATUS_SHORT,
+} from './domain/inventoryList.js';
+import {
+  draftWeek,
+  mealsTodayViewModel,
+  buildWeekShoppingProposal,
+  weekDinnerShortages,
+} from './domain/meals.js';
 import { parseQuickAdd } from './domain/quick-add.js';
 import {
   generateSuggestions,
@@ -45,7 +58,7 @@ import {
 import { resolveDinnerVisual } from './domain/dinnerVisual.js';
 import { nextFoodAction, normalizeFoodNav } from './domain/foodHub.js';
 import { categoryLabel, categoryOptionsHtml } from './domain/categories.js';
-import { pinWindowTop } from './lib/scrollLock.js';
+import { currentScrollY, pinWindowTop, restoreScrollY } from './lib/scrollLock.js';
 import { createOllamaProvider, installHint, OLLAMA_PROXY_PREFIX } from './ai/ollama.js';
 import { smokeTest, DEFAULT_MODEL } from './ai/provider.js';
 import { runConversationTurn } from './ai/conversation.js';
@@ -108,12 +121,19 @@ export function createApp(root) {
       migratedAt: null,
     };
   }
+  repairOtherCategories(state.inventory);
   persist(state);
 
   let toast = '';
   let editingId = null;
   /** Inventory row currently being edited (separate from shopping edit). */
   let editingInventoryId = null;
+  /** Expanded compact inventory row (session only). */
+  let expandedInventoryId = null;
+  /** Inventory keyword search (session only). */
+  let invQuery = '';
+  /** null = auto (open when empty / paste); otherwise remember user toggle. */
+  let invToolsOpen = null;
   /** Family member note currently being edited. */
   let editingMemberId = null;
   let pendingProposals = [];
@@ -503,7 +523,8 @@ export function createApp(root) {
     else render();
   };
 
-  function render() {
+  function render({ resetScroll = false } = {}) {
+    const scrollY = resetScroll ? 0 : currentScrollY();
     const nav = normalizeFoodNav(state.settings.view || 'home', state.settings.foodSegment);
     state.settings.view = nav.view;
     state.settings.foodSegment = nav.foodSegment;
@@ -568,6 +589,10 @@ export function createApp(root) {
         ${pendingApproval ? approvalPanel(pendingApproval) : ''}
       </div>`;
     bind();
+    requestAnimationFrame(() => {
+      if (resetScroll) pinWindowTop({ force: true });
+      else restoreScrollY(scrollY);
+    });
     if (pendingApproval) {
       const sheet = root.querySelector('.approval-sheet');
       const focusEl = sheet?.querySelector('.primary, .ghost, [data-act]');
@@ -665,8 +690,11 @@ export function createApp(root) {
       { id: 'inventory', label: '재고' },
       { id: 'meals', label: '식단' },
     ];
-    return `
-      <section class="panel food-coach" aria-label="지금 할 일">
+    // Inventory needs vertical room for the compact list — skip the coach card there.
+    const coach =
+      seg === 'inventory'
+        ? ''
+        : `<section class="panel food-coach" aria-label="지금 할 일">
         <p class="label">불편해지기 전에 먼저</p>
         <h2>${esc(next.title)}</h2>
         <p class="hint">${esc(next.hint)}</p>
@@ -675,8 +703,10 @@ export function createApp(root) {
             ? `<button type="button" class="primary block" data-nav="food" data-segment="${next.segment}">${esc(next.cta)}</button>`
             : `<p class="hint">아래에 바로 이어서 하면 돼요.</p>`
         }
-      </section>
-      <div class="food-segments" role="tablist" aria-label="식생활 구분">
+      </section>`;
+    return `
+      ${coach}
+      <div class="food-segments ${seg === 'inventory' ? 'compact' : ''}" role="tablist" aria-label="식생활 구분">
         ${segments
           .map(
             (s) =>
@@ -763,15 +793,31 @@ export function createApp(root) {
     const pack = generateSuggestions(state);
     const list = ensureActiveList(state);
     const openCount = list.items.filter((i) => !i.checked).length;
-    const lowCount = state.inventory.filter((i) => i.status === 'out' || i.status === 'low').length;
     const dinnerHome = buildDinnerHomeOffer(state, { altIndex: dinnerAltIndex });
-    const dinnerBlock = dinnerHomeBlock(dinnerHome, { immersive });
+    const dinnerBlock = dinnerHomeBlock(dinnerHome, { immersive, openShopCount: openCount });
+    const dinnerPending = dinnerHome.status === 'offer';
+
+    // While choosing tonight's dinner, keep the first viewport on that one job.
+    if (dinnerPending) {
+      if (pack.mode === 'setup' && !immersive) {
+        return `
+          ${dinnerBlock}
+          <section class="panel muted">
+            <p class="hint">재고·장보기는 식생활 탭에서 이어서 할 수 있어요. 지금은 저녁만 고르면 돼요.</p>
+          </section>
+          ${chatPanel({ collapsed: true })}`;
+      }
+      return `
+        ${dinnerBlock}
+        ${chatPanel({ collapsed: true })}`;
+    }
 
     if (pack.mode === 'setup') {
       return `
+        ${dinnerBlock}
         ${
           immersive
-            ? dinnerBlock
+            ? ''
             : `<section class="hero-assist">
           <p class="lede">목록을 채우기 전에, 필요한 일을 먼저 보여 드릴게요.</p>
           <h2>${esc(pack.setup.title)}</h2>
@@ -788,46 +834,22 @@ export function createApp(root) {
               )
               .join('')}
           </ul>
-        </section>
-        ${dinnerBlock}`
+        </section>`
         }
-        ${
-          immersive
-            ? `<section class="status-strip" aria-label="요약">
-          <div><p class="label">살 것</p><p class="budget-value">${openCount}</p></div>
-          <div><p class="label">재고 주의</p><p class="budget-value">${lowCount}</p></div>
-          <div><p class="label">저녁</p><p class="budget-value">${dinnerHome.status === 'confirmed' ? '확정' : dinnerHome.status === 'offer' ? '제안' : '미정'}</p></div>
-        </section>
-        ${chatPanel()}`
-            : chatPanel()
-        }`;
+        ${chatPanel({ collapsed: true })}`;
     }
 
     return `
       ${dinnerBlock}
-      <section class="status-strip" aria-label="요약">
-        <div><p class="label">살 것</p><p class="budget-value">${openCount}</p></div>
-        <div><p class="label">재고 주의</p><p class="budget-value">${lowCount}</p></div>
-        <div><p class="label">저녁</p><p class="budget-value">${dinnerHome.status === 'confirmed' ? '확정' : dinnerHome.status === 'offer' ? '제안' : '미정'}</p></div>
-      </section>
       <section class="panel">
         <h2>지금 챙길 일</h2>
         ${
           pack.suggestions.length
             ? `<ul class="suggest-list">${pack.suggestions.map(suggestCard).join('')}</ul>`
-            : `<p class="empty">지금은 급한 제안이 없어요. 장보기·재고는 아래에서 바로 갈 수 있어요.</p>`
+            : `<p class="empty">지금은 급한 제안이 없어요. 장보기·재고는 식생활 탭에서 열어요.</p>`
         }
       </section>
-      ${chatPanel()}
-      <section class="panel muted">
-        <h2>도구</h2>
-        <div class="tool-grid">
-          <button type="button" class="secondary" data-nav="food" data-segment="shopping">장보기${openCount ? ` · ${openCount}` : ''}</button>
-          <button type="button" class="secondary" data-nav="food" data-segment="inventory">재고</button>
-          <button type="button" class="secondary" data-nav="food" data-segment="meals">식단</button>
-        </div>
-        <p class="hint">세 가지는 식생활 탭 안에 모아 두었어요. 변경은 승인 후에만 저장돼요.</p>
-      </section>`;
+      ${chatPanel({ collapsed: true })}`;
   }
 
   /** Stock / sauce / protein chips under the dinner title. */
@@ -847,7 +869,7 @@ export function createApp(root) {
       .join('')}</div>`;
   }
 
-  function dinnerHomeBlock(dinnerHome, { immersive = false } = {}) {
+  function dinnerHomeBlock(dinnerHome, { immersive = false, openShopCount = 0 } = {}) {
     if (dinnerHome.status === 'confirmed') {
       const dinner = dinnerHome.dinner;
       const visual = resolveDinnerVisual(state, dinner);
@@ -855,6 +877,12 @@ export function createApp(root) {
         sauceName: dinner.sauceName,
         protein: dinner.protein,
       });
+      const shopAction =
+        openShopCount > 0
+          ? `<div class="dinner-actions">
+              <button type="button" class="secondary block" data-nav="food" data-segment="shopping">장보기 ${openShopCount}개 보기</button>
+            </div>`
+          : '';
       if (immersive && visual.imageSrc) {
         return dinnerStage({
           visual,
@@ -863,7 +891,7 @@ export function createApp(root) {
           title: dinner.title,
           meta,
           support: '',
-          actions: '',
+          actions: shopAction,
         });
       }
       return `<section class="panel dinner-hero" aria-label="오늘 저녁">
@@ -871,6 +899,7 @@ export function createApp(root) {
           <p class="label">오늘 저녁 · 확정</p>
           <h2>${esc(dinner.title)}</h2>
           ${meta}
+          ${shopAction}
         </div>
       </section>`;
     }
@@ -934,31 +963,34 @@ export function createApp(root) {
   }
 
   function renderStockRegisterForm(protein) {
+    const status = stockRegisterDraft?.status || '';
+    const location = stockRegisterDraft?.location || 'fridge';
     return `<form data-form="dinner-stock-register" class="dinner-stock-form" aria-label="재고 확인 후 등록">
-      <p class="hint"><strong>${esc(protein)}</strong> — 확인한 값만 적어요. 비운 수량·단위는 저장하지 않아요.</p>
-      <label>보유 상태
-        <select name="status" required>
-          <option value="">선택해 주세요</option>
-          <option value="enough">충분함</option>
-          <option value="low">부족함</option>
-          <option value="out">없음</option>
-          <option value="unknown">모름</option>
-        </select>
-      </label>
-      <label>보관 위치
-        <select name="location" required>
-          <option value="">선택해 주세요</option>
-          <option value="fridge">냉장고</option>
-          <option value="freezer">냉동실</option>
-          <option value="pantry">실온·팬트리</option>
-          <option value="storage">창고</option>
-        </select>
-      </label>
-      <label>수량 (선택)<input name="quantity" type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="모를면 비워 두세요" /></label>
-      <label>단위 (선택)<input name="unit" maxlength="12" placeholder="예: 개, 마리 (선택)" /></label>
+      <p class="hint"><strong>${esc(protein)}</strong> — 상태·위치만 고르면 돼요. 수량은 모를 때 비워 두세요.</p>
+      <p class="label">보유 상태</p>
+      <div class="status-chips" role="group" aria-label="보유 상태">
+        ${STATUSES.map(
+          (s) =>
+            `<button type="button" class="${status === s.id ? 'on' : ''}" data-act="stock-draft-status" data-status="${s.id}">${s.label}</button>`,
+        ).join('')}
+      </div>
+      <input type="hidden" name="status" value="${esc(status)}" required />
+      <p class="label">보관 위치</p>
+      <div class="status-chips" role="group" aria-label="보관 위치">
+        ${LOCATIONS.map(
+          (l) =>
+            `<button type="button" class="${location === l.id ? 'on' : ''}" data-act="stock-draft-location" data-location="${l.id}">${l.label}</button>`,
+        ).join('')}
+      </div>
+      <input type="hidden" name="location" value="${esc(location)}" required />
+      <details class="hh-name-details">
+        <summary>수량·단위 (선택)</summary>
+        <label>수량<input name="quantity" type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="모를면 비워 두세요" /></label>
+        <label>단위<input name="unit" maxlength="12" placeholder="예: 개, 마리" /></label>
+      </details>
       <input type="hidden" name="name" value="${esc(protein)}" />
       <div class="row-actions wrap">
-        <button type="submit" class="primary">미리보기</button>
+        <button type="submit" class="primary" ${status ? '' : 'disabled'}>미리보기</button>
         <button type="button" class="ghost" data-act="dinner-stock-cancel">취소</button>
       </div>
     </form>`;
@@ -999,9 +1031,8 @@ export function createApp(root) {
     </section>`;
   }
 
-  function chatPanel() {
-    return `<section class="panel chat-panel" aria-label="가정 비서 대화">
-      <h2>말해 보세요</h2>
+  function chatPanel({ collapsed = false } = {}) {
+    const body = `
       <p class="hint">한국어로 장보기·식단·재고를 말해 주세요. AI는 제안만 하고, 승인 전에는 저장하지 않아요.</p>
       <div class="chat-log" role="log">
         ${
@@ -1021,7 +1052,18 @@ export function createApp(root) {
         <label class="sr-only" for="chat-text">메시지</label>
         <textarea id="chat-text" name="message" rows="2" maxlength="500" placeholder="무엇을 도와드릴까요?" ${chatBusy ? 'disabled' : ''}>${esc(chatDraft)}</textarea>
         <button type="submit" class="primary" ${chatBusy ? 'disabled' : ''}>${chatBusy ? '생각 중…' : '보내기'}</button>
-      </form>
+      </form>`;
+    if (collapsed) {
+      return `<section class="panel chat-panel muted" aria-label="가정 비서 대화">
+        <details class="hh-name-details">
+          <summary>말해 보세요 (필요할 때만)</summary>
+          ${body}
+        </details>
+      </section>`;
+    }
+    return `<section class="panel chat-panel" aria-label="가정 비서 대화">
+      <h2>말해 보세요</h2>
+      ${body}
     </section>`;
   }
 
@@ -1160,8 +1202,8 @@ export function createApp(root) {
       return `<li class="shop-row edit"><form data-form="edit-item" data-id="${item.id}">
         <input name="name" value="${esc(item.name)}" required maxlength="80" />
         <div class="form-grid compact">
-          <input name="quantity" type="number" min="0.1" step="any" value="${item.quantity}" aria-label="수량" />
-          <input name="unit" value="${esc(item.unit)}" maxlength="12" aria-label="단위" />
+          <input name="quantity" type="number" min="0.1" step="any" value="${item.quantity ?? ''}" placeholder="비우면 미확인" aria-label="수량" />
+          <input name="unit" value="${esc(item.unit || '')}" maxlength="12" aria-label="단위" />
           <select name="priority" aria-label="구분"><option value="must" ${item.priority === 'must' ? 'selected' : ''}>필수</option><option value="nice" ${item.priority === 'nice' ? 'selected' : ''}>선택</option></select>
           <select name="category" aria-label="분류">${categoryOptionsHtml(item.category)}</select>
           <input name="estimatedPrice" type="number" min="0" step="100" value="${item.estimatedPrice ?? ''}" placeholder="가격" aria-label="가격" />
@@ -1172,11 +1214,15 @@ export function createApp(root) {
         </div>
       </form></li>`;
     }
+    const qtyLabel =
+      item.quantity == null
+        ? '수량 미확인'
+        : `${item.quantity}${esc(item.unit || '')}`;
     return `<li class="shop-row ${item.checked ? 'done' : ''}">
       <label class="check">
         <input type="checkbox" data-act="toggle" data-id="${item.id}" ${item.checked ? 'checked' : ''} />
         <span class="body"><strong>${esc(item.name)}</strong>
-        <small>${item.quantity}${esc(item.unit)} · ${item.priority === 'must' ? '필수' : '선택'} · ${catLabel(item.category)}${item.estimatedPrice != null ? ` · ${won(item.estimatedPrice)}` : ''}</small></span>
+        <small>${qtyLabel} · ${item.priority === 'must' ? '필수' : '선택'} · ${catLabel(item.category)}${item.estimatedPrice != null ? ` · ${won(item.estimatedPrice)}` : ''}</small></span>
       </label>
       <div class="row-actions">
         <button type="button" class="icon" data-act="edit" data-id="${item.id}" aria-label="수정">✎</button>
@@ -1186,100 +1232,114 @@ export function createApp(root) {
   }
 
   function inventoryView() {
-    const byLoc = LOCATIONS.map((loc) => ({
-      ...loc,
-      items: state.inventory.filter((i) => i.location === loc.id),
-    }));
     const paste = orderPasteDraft;
-    return `
-      <p class="lede">정확한 무게는 필요할 때만. 상태만으로도 장보기와 연결됩니다.</p>
-      <form class="manual-add order-paste" data-form="order-paste">
-        <p class="hint">네이버페이·마이쇼핑 주문 화면을 복사해 붙여 넣으면 재고 이름으로 정리해 드려요. 승인 전에 저장하지 않아요.</p>
-        <p class="hint"><a href="${esc(NAVER_PAY_HISTORY_URL)}" target="_blank" rel="noopener noreferrer">네이버페이 주문·결제내역 바로가기</a></p>
-        <label class="block-label">주문 내역 붙여넣기
-          <textarea name="paste" rows="5" placeholder="결제완료&#10;[KF365] 무항생제 달걀 XL(특란) 40구…">${esc(paste?.rawText || '')}</textarea>
-        </label>
-        <button type="submit" class="secondary block">붙여넣기 분석</button>
-      </form>
-      ${
-        paste
-          ? `<section class="panel proposals" data-order-paste-result>
-          <h2>재고에 넣을까요?</h2>
-          ${
-            paste.ready.length
-              ? paste.ready
-                  .map((p, idx) => {
-                    const qty =
-                      p.quantity != null && p.unit
-                        ? `${p.quantity}${esc(p.unit)}`
-                        : p.quantity != null
-                          ? String(p.quantity)
-                          : '수량 없음(상태만)';
-                    const loc = LOCATIONS.find((l) => l.id === p.location)?.label || p.location;
-                    return `<label class="proposal"><input type="checkbox" name="order-ready" value="${idx}" checked /><span><strong>${esc(p.name)}</strong> · ${esc(qty)} · ${esc(loc)} · 충분함</span></label>`;
-                  })
-                  .join('')
-              : '<p class="empty">바로 등록할 항목이 없어요.</p>'
-          }
-          ${
-            paste.needsClarify.length
-              ? `<h3 class="subhead">확인이 필요해요</h3>
-              <p class="hint">상세 옵션·용량을 짧게 적어 주세요. 예: 1kg, 물냉</p>
-              ${paste.needsClarify
-                .map(
-                  (p, idx) => `<div class="clarify-row" data-clarify-idx="${idx}">
-                    <p><strong>${esc(p.name)}</strong> <small>${esc(p.clarifyReason || '')}</small></p>
-                    <p class="fine muted-src">${esc(p.sourceText)}</p>
-                    <div class="row-actions">
-                      <input name="clarify-${idx}" maxlength="40" placeholder="1kg / 옵션명" aria-label="${esc(p.name)} 보완" value="${esc(p.draftAnswer || '')}" />
-                      <button type="button" class="secondary" data-act="clarify-order" data-idx="${idx}">반영</button>
-                    </div>
-                  </div>`,
-                )
-                .join('')}`
-              : ''
-          }
-          ${
-            paste.skipped?.length
-              ? `<details class="paste-skipped"><summary>건너뛴 ${paste.skipped.length}건 (취소·비식재료 등)</summary>
+    const filtered = filterInventory(state.inventory, { query: invQuery });
+    const groups = groupInventoryByLocation(filtered);
+    const toolsOpen =
+      invToolsOpen != null ? invToolsOpen : Boolean(paste) || state.inventory.length === 0;
+    const toolsBody = `
+        <form class="manual-add" data-form="add-inventory">
+          <p class="hint">분류는 이름으로 자동 지정돼요. 틀리면 수정에서 바꾸세요.</p>
+          <div class="form-grid">
+            <label>이름<input name="name" required maxlength="80" placeholder="브로콜리, 과자, 휴지…" /></label>
+            <label>위치<select name="location">${LOCATIONS.map((l) => `<option value="${l.id}">${l.label}</option>`).join('')}</select></label>
+            <label>상태<select name="status">${STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('')}</select></label>
+            <label>수량(선택)<input name="quantity" type="number" min="0" step="any" /></label>
+            <label>단위<input name="unit" maxlength="12" placeholder="개" /></label>
+          </div>
+          <button type="submit" class="primary block">재고 등록</button>
+        </form>
+        <form class="manual-add order-paste" data-form="order-paste">
+          <p class="hint">네이버페이·마이쇼핑 주문 화면을 복사해 붙여 넣으면 재고 이름으로 정리해 드려요. 승인 전에 저장하지 않아요.</p>
+          <p class="hint"><a href="${esc(NAVER_PAY_HISTORY_URL)}" target="_blank" rel="noopener noreferrer">네이버페이 주문·결제내역 바로가기</a></p>
+          <label class="block-label">주문 내역 붙여넣기
+            <textarea name="paste" rows="4" placeholder="결제완료&#10;[KF365] 무항생제 달걀 XL(특란) 40구…">${esc(paste?.rawText || '')}</textarea>
+          </label>
+          <button type="submit" class="secondary block">붙여넣기 분석</button>
+        </form>
+        ${
+          paste
+            ? `<section class="proposals" data-order-paste-result>
+            <h2>재고에 넣을까요?</h2>
+            ${
+              paste.ready.length
+                ? paste.ready
+                    .map((p, idx) => {
+                      const qty =
+                        p.quantity != null && p.unit
+                          ? `${p.quantity}${esc(p.unit)}`
+                          : p.quantity != null
+                            ? String(p.quantity)
+                            : '수량 없음(상태만)';
+                      const loc = LOCATIONS.find((l) => l.id === p.location)?.label || p.location;
+                      return `<label class="proposal"><input type="checkbox" name="order-ready" value="${idx}" checked /><span><strong>${esc(p.name)}</strong> · ${esc(qty)} · ${esc(loc)} · 충분함</span></label>`;
+                    })
+                    .join('')
+                : '<p class="empty">바로 등록할 항목이 없어요.</p>'
+            }
+            ${
+              paste.needsClarify.length
+                ? `<h3 class="subhead">확인이 필요해요</h3>
+                <p class="hint">상세 옵션·용량을 짧게 적어 주세요. 예: 1kg, 물냉</p>
+                ${paste.needsClarify
+                  .map(
+                    (p, idx) => `<div class="clarify-row" data-clarify-idx="${idx}">
+                      <p><strong>${esc(p.name)}</strong> <small>${esc(p.clarifyReason || '')}</small></p>
+                      <p class="fine muted-src">${esc(p.sourceText)}</p>
+                      <div class="row-actions">
+                        <input name="clarify-${idx}" maxlength="40" placeholder="1kg / 옵션명" aria-label="${esc(p.name)} 보완" value="${esc(p.draftAnswer || '')}" />
+                        <button type="button" class="secondary" data-act="clarify-order" data-idx="${idx}">반영</button>
+                      </div>
+                    </div>`,
+                  )
+                  .join('')}`
+                : ''
+            }
+            ${
+              paste.skipped?.length
+                ? `<details class="paste-skipped"><summary>건너뛴 ${paste.skipped.length}건 (취소·비식재료 등)</summary>
                 <ul class="fine">${paste.skipped.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>
               </details>`
-              : ''
-          }
-          ${
-            paste.ready.length
-              ? `<button type="button" class="primary block" data-act="apply-order-paste">선택한 항목 재고에 등록</button>`
-              : ''
-          }
-          <button type="button" class="ghost block" data-act="clear-order-paste">붙여넣기 닫기</button>
-        </section>`
-          : ''
-      }
-      <form class="manual-add" data-form="add-inventory">
-        <p class="hint">분류는 이름으로 자동 지정돼요. 틀리면 수정(✎)에서 바꾸세요.</p>
-        <div class="form-grid">
-          <label>이름<input name="name" required maxlength="80" placeholder="브로콜리, 과자, 휴지…" /></label>
-          <label>위치<select name="location">${LOCATIONS.map((l) => `<option value="${l.id}">${l.label}</option>`).join('')}</select></label>
-          <label>상태<select name="status">${STATUSES.map((s) => `<option value="${s.id}">${s.label}</option>`).join('')}</select></label>
-          <label>수량(선택)<input name="quantity" type="number" min="0" step="any" /></label>
-          <label>단위<input name="unit" maxlength="12" placeholder="개" /></label>
+                : ''
+            }
+            ${
+              paste.ready.length
+                ? `<button type="button" class="primary block" data-act="apply-order-paste">선택한 항목 재고에 등록</button>`
+                : ''
+            }
+            <button type="button" class="ghost block" data-act="clear-order-paste">붙여넣기 닫기</button>
+          </section>`
+            : ''
+        }`;
+    const listHtml = groups.length
+      ? groups
+          .map(
+            (g) => `<section class="inv-group" data-inv-group="${esc(g.id)}">
+              <h3 class="inv-group-title">${esc(g.label)} <span class="inv-group-count">${g.items.length}</span></h3>
+              <ul class="inv-list compact" data-inv-compact>${g.items.map((item) => inventoryRow(item)).join('')}</ul>
+            </section>`,
+          )
+          .join('')
+      : '<p class="empty">맞는 재고가 없어요.</p>';
+    return `
+      <div class="inv-screen" data-inv-screen>
+      <section class="panel inv-panel" data-inv-list-panel>
+        <div class="inv-toolbar" role="search">
+          <input type="search" name="inv-query" value="${esc(invQuery)}" placeholder="재료 검색" maxlength="40" autocomplete="off" aria-label="재고 검색" />
+          <button type="button" class="secondary inv-tools-btn" data-act="inv-tools-toggle" aria-expanded="${toolsOpen ? 'true' : 'false'}" data-inv-tools-btn>${toolsOpen ? '등록 닫기' : '재고 등록'}</button>
         </div>
-        <button type="submit" class="primary block">재고 등록</button>
-      </form>
-      ${byLoc
-        .map(
-          (loc) => `<section class="panel"><h2>${loc.label}</h2>${
-            loc.items.length
-              ? `<ul class="inv-list">${loc.items.map((item) => inventoryRow(item)).join('')}</ul>`
-              : '<p class="empty">비어 있어요.</p>'
-          }</section>`,
-        )
-        .join('')}`;
+        <p class="hint inv-count" data-inv-count>${filtered.length}개${
+          filtered.length !== state.inventory.length ? ` · 전체 ${state.inventory.length}` : ''
+        } · 눌러서 상세</p>
+        ${toolsOpen ? `<div class="inv-tools-body" data-inv-tools>${toolsBody}</div>` : ''}
+        ${listHtml}
+      </section>
+      </div>`;
   }
 
   function inventoryRow(item) {
     if (editingInventoryId === item.id) {
-      return `<li class="inv-row edit">
+      return `<li class="inv-row edit open" data-status="${esc(item.status)}">
         <form data-form="edit-inventory" data-id="${item.id}">
           <input name="name" value="${esc(item.name)}" required maxlength="80" aria-label="이름" />
           <div class="form-grid compact">
@@ -1296,58 +1356,63 @@ export function createApp(root) {
         </form>
       </li>`;
     }
-    return `<li>
-      <div><strong>${esc(item.name)}</strong><small>${
-        item.quantity != null
-          ? `${item.quantity}${esc(item.unit || '')} · `
-          : '수량 미확인 · '
-      }${catLabel(item.category)}</small></div>
-      <div class="status-chips">${STATUSES.map(
-        (s) =>
-          `<button type="button" class="${item.status === s.id ? 'on' : ''}" data-act="inv-status" data-id="${item.id}" data-status="${s.id}">${s.label}</button>`,
-      ).join('')}</div>
-      <div class="row-actions">
-        <button type="button" class="icon" data-act="inv-edit" data-id="${item.id}" aria-label="수정">✎</button>
-        <button type="button" class="icon danger" data-act="inv-delete" data-id="${item.id}" aria-label="삭제">✕</button>
+    const open = expandedInventoryId === item.id;
+    const detailId = `inv-detail-${item.id}`;
+    const st = statusLabel(item.status);
+    const title = formatInventoryNameQty(item);
+    const meta = esc(catLabel(item.category));
+    return `<li class="inv-row compact ${open ? 'open' : ''}" data-status="${esc(item.status)}" data-id="${esc(item.id)}">
+      <button type="button" class="inv-summary" data-act="inv-toggle" data-id="${esc(item.id)}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${detailId}">
+        <span class="inv-name">${esc(title)}</span>
+        <span class="inv-status" data-status="${esc(item.status)}">${esc(st)}</span>
+      </button>
+      <div class="inv-detail" id="${detailId}" ${open ? '' : 'hidden'}>
+        <p class="inv-qty"><small>${meta}${
+          item.quantity == null ? ' · 수량 미확인' : ''
+        }</small></p>
+        <div class="status-chips inv-status-chips" role="group" aria-label="${esc(item.name)} 상태">${STATUSES.map(
+          (s) =>
+            `<button type="button" class="${item.status === s.id ? 'on' : ''}" data-act="inv-status" data-id="${item.id}" data-status="${s.id}" aria-pressed="${item.status === s.id ? 'true' : 'false'}">${esc(INV_STATUS_SHORT[s.id] || s.label)}</button>`,
+        ).join('')}</div>
+        <div class="row-actions inv-detail-actions">
+          <button type="button" class="icon" data-act="inv-edit" data-id="${item.id}" aria-label="수정">✎</button>
+          <button type="button" class="icon danger" data-act="inv-delete" data-id="${item.id}" aria-label="삭제">✕</button>
+        </div>
       </div>
     </li>`;
   }
 
   function mealsView() {
-    const today = suggestToday(state, state.settings.todayFlags || {});
+    const dinnerHome = buildDinnerHomeOffer(state, { altIndex: 0 });
+    const today = mealsTodayViewModel(dinnerHome);
     const plan = state.mealPlan;
-    const dinner = state.todayDinner;
+    const weekNeeds = plan ? weekDinnerShortages(state) : [];
+    const todayMeta = dinnerMetaChips({
+      stockLabel: today.stockLabel,
+      sauceName: today.sauceName,
+      protein: today.protein,
+    });
+    const todayStatusLabel =
+      today.status === 'confirmed' ? '확정' : today.status === 'offer' ? '홈 후보 · 저장 전' : '추천 없음';
     return `
-      <p class="lede">지금은 <strong>저녁</strong>만 다뤄요. 야채찜·구이 + 소스 변형. 아침·점심 추천은 나중에.</p>
-      ${
-        dinner
-          ? `<section class="panel dinner-confirmed"><h2>홈에서 확정한 오늘 저녁</h2><p><strong>${esc(dinner.title)}</strong></p><small>${dinner.protein ? esc(dinner.protein) : ''}${dinner.sauceName ? ' · ' + esc(dinner.sauceName) : ''}</small></section>`
-          : ''
-      }
-      <section class="panel">
+      <p class="lede">지금은 <strong>저녁</strong>만 다뤄요. 오늘 저녁은 홈과 같은 상태예요. 확정은 홈에서만 해요.</p>
+      <section class="panel" data-meals-today="${esc(today.status)}">
         <h2>오늘</h2>
-        <div class="meal-cards">${today.slots
-          .map(
-            (s) => `<article class="meal-card">
-            <p class="label">${mealLabel(s.mealType)}</p>
-            <h3>${esc(s.title)}</h3>
-            <p>${s.protein ? `${esc(s.protein)} · ` : ''}${s.sauce ? esc(s.sauce.name) : '소스 선택 자유'}</p>
-            <small>${esc(s.note || '')}</small>
-          </article>`,
-          )
-          .join('')}</div>
-        <div class="row-actions wrap">
-          <button type="button" class="ghost" data-act="today-lazy">요리 귀찮음</button>
-          <button type="button" class="ghost" data-act="today-noshop">장보기 없이</button>
-          <button type="button" class="ghost" data-act="today-refresh">다른 조합</button>
-        </div>
+        <article class="meal-card">
+          <p class="label">저녁 · ${esc(todayStatusLabel)}</p>
+          <h3>${esc(today.title)}</h3>
+          ${todayMeta}
+          <small>${esc(today.hint)}</small>
+        </article>
       </section>
       <section class="panel">
         <h2>나의 소스 · 방식</h2>
         <ul class="sauce-list">${state.sauces
           .map(
             (s) =>
-              `<li><strong>${esc(s.name)}</strong><small>${s.components.map((c) => c.name + (c.prep ? `(${c.prep})` : '')).join(' · ')}${s.exactAmounts === false ? ' · 비율은 나중에' : ''}</small></li>`,
+              `<li><strong>${esc(s.name)}</strong><small>${s.components
+                .map((c) => esc(c.name) + (c.prep ? ` (${esc(c.prep)})` : ''))
+                .join(' · ')}${s.exactAmounts === false ? ' · 비율은 나중에' : ''}</small></li>`,
           )
           .join('')}</ul>
       </section>
@@ -1355,7 +1420,11 @@ export function createApp(root) {
         <h2>이번 주 초안</h2>
         ${
           plan
-            ? `<p class="hint">${esc(plan.weekStart)} 주 · ${plan.status === 'confirmed' ? '확정' : '초안'} · 장보기 자동 연결은 다음 단계</p>
+            ? `<p class="hint">${esc(plan.weekStart)} 주 · ${plan.status === 'confirmed' ? '확정' : '초안'}${
+                weekNeeds.length
+                  ? ` · 부족한 재료 ${weekNeeds.length}개 확인됨`
+                  : ' · 확인된 부족 재료 없음'
+              }</p>
             <ul class="week-list">${plan.days
               .map((d) => {
                 const dinner = d.slots.find((x) => x.mealType === 'dinner');
@@ -1364,6 +1433,11 @@ export function createApp(root) {
               .join('')}</ul>
             <div class="row-actions wrap">
               <button type="button" class="secondary" data-act="confirm-week" ${plan.status === 'confirmed' ? 'disabled' : ''}>주간 식단 확정</button>
+              ${
+                weekNeeds.length
+                  ? `<button type="button" class="primary" data-act="week-shop-needs">부족한 재료 장보기</button>`
+                  : ''
+              }
               <button type="button" class="ghost" data-act="draft-week">초안 다시</button>
             </div>`
             : `<button type="button" class="primary" data-act="draft-week">7일 초안 만들기</button>`
@@ -1564,9 +1638,8 @@ export function createApp(root) {
         state.settings.foodSegment = nav.foodSegment;
         editingId = null;
         persist(state);
-        render();
         // Tab changes should start at the top (iOS often keeps a phantom offset).
-        requestAnimationFrame(() => pinWindowTop({ force: true }));
+        render({ resetScroll: true });
       };
     });
 
@@ -1651,12 +1724,32 @@ export function createApp(root) {
           setToast('지금은 등록할 가정 재료가 없어요.');
           return;
         }
-        stockRegisterDraft = { protein };
+        stockRegisterDraft = { protein, status: '', location: 'fridge' };
         pendingApproval = null;
         render();
       };
     });
 
+    root.querySelectorAll('[data-act=stock-draft-status]').forEach((btn) => {
+      btn.onclick = () => {
+        if (!stockRegisterDraft) return;
+        stockRegisterDraft = {
+          ...stockRegisterDraft,
+          status: btn.dataset.status,
+        };
+        render();
+      };
+    });
+    root.querySelectorAll('[data-act=stock-draft-location]').forEach((btn) => {
+      btn.onclick = () => {
+        if (!stockRegisterDraft) return;
+        stockRegisterDraft = {
+          ...stockRegisterDraft,
+          location: btn.dataset.location,
+        };
+        render();
+      };
+    });
     root.querySelectorAll('[data-act=dinner-stock-cancel]').forEach((btn) => {
       btn.onclick = () => {
         stockRegisterDraft = null;
@@ -2095,6 +2188,7 @@ export function createApp(root) {
         try {
           const fd = Object.fromEntries(new FormData(addInv));
           delete fd.category; // inferred from name
+          invToolsOpen = true;
           commit((s) => {
             s.inventory.push(createInventoryItem(fd));
           }, '재고를 등록했어요.');
@@ -2103,9 +2197,54 @@ export function createApp(root) {
         }
       };
     }
+    const invToolsToggle = root.querySelector('[data-act=inv-tools-toggle]');
+    if (invToolsToggle) {
+      invToolsToggle.onclick = () => {
+        const opening = invToolsToggle.getAttribute('aria-expanded') !== 'true';
+        invToolsOpen = opening;
+        render();
+        if (opening) {
+          requestAnimationFrame(() => {
+            const panel = root.querySelector('[data-inv-tools]');
+            const nameInput = root.querySelector('[data-form=add-inventory] [name=name]');
+            panel?.scrollIntoView?.({ block: 'nearest' });
+            nameInput?.focus?.();
+          });
+        }
+      };
+    }
+    const invQueryInput = root.querySelector('[name=inv-query]');
+    if (invQueryInput) {
+      invQueryInput.oninput = () => {
+        invQuery = String(invQueryInput.value || '');
+        render();
+        const again = root.querySelector('[name=inv-query]');
+        if (again) {
+          again.focus();
+          const len = again.value.length;
+          again.setSelectionRange(len, len);
+        }
+      };
+    }
+    root.querySelectorAll('[data-act=inv-toggle]').forEach((el) => {
+      el.onclick = () => {
+        const id = el.dataset.id;
+        expandedInventoryId = expandedInventoryId === id ? null : id;
+        editingInventoryId = null;
+        render();
+        if (expandedInventoryId === id) {
+          requestAnimationFrame(() => {
+            root
+              .querySelector(`.inv-detail:not([hidden]) [data-act=inv-edit], .inv-detail:not([hidden]) .inv-status-chips button`)
+              ?.focus?.();
+          });
+        }
+      };
+    });
     root.querySelectorAll('[data-act=inv-edit]').forEach((el) => {
       el.onclick = () => {
         editingInventoryId = el.dataset.id;
+        expandedInventoryId = el.dataset.id;
         editingId = null;
         render();
       };
@@ -2125,53 +2264,67 @@ export function createApp(root) {
             '재고를 수정했어요.',
           );
           editingInventoryId = null;
+          expandedInventoryId = form.dataset.id;
         } catch (err) {
           setToast(err.message);
         }
       };
     });
     root.querySelectorAll('[data-act=inv-status]').forEach((el) => {
-      el.onclick = () => commit((s) => setInventoryStatus(s, el.dataset.id, el.dataset.status));
+      el.onclick = () => {
+        expandedInventoryId = el.dataset.id;
+        commit((s) => setInventoryStatus(s, el.dataset.id, el.dataset.status));
+      };
     });
     root.querySelectorAll('[data-act=inv-delete]').forEach((el) => {
       el.onclick = () => {
         if (!confirm('재고에서 삭제할까요?')) return;
         if (editingInventoryId === el.dataset.id) editingInventoryId = null;
+        if (expandedInventoryId === el.dataset.id) expandedInventoryId = null;
         commit((s) => removeInventory(s, el.dataset.id), '삭제했어요.');
       };
     });
 
     root.querySelectorAll('[data-act=draft-week]').forEach((el) => {
-      el.onclick = () => commit((s) => {
-        s.mealPlan = draftWeek(s);
-      }, '주간 초안을 만들었어요.');
+      el.onclick = () =>
+        commit((s) => {
+          s.mealPlan = draftWeek(s);
+        }, '주간 초안을 만들었어요.');
     });
     const confirmWeek = root.querySelector('[data-act=confirm-week]');
     if (confirmWeek) {
-      confirmWeek.onclick = () =>
+      confirmWeek.onclick = () => {
+        // User tapped confirm — treat as explicit approval for mealPlan status.
         commit((s) => {
           if (s.mealPlan) s.mealPlan.status = 'confirmed';
         }, '주간 식단을 확정했어요.');
+        // App-derived shopping top-up still goes through ActionProposal (one sheet).
+        const shop = buildWeekShoppingProposal(state);
+        if (shop) {
+          try {
+            const preview = previewProposal(state, shop);
+            pendingApproval = { proposal: shop, preview };
+            render();
+          } catch (err) {
+            setToast(err.message || '장보기 제안을 만들지 못했어요.');
+          }
+        }
+      };
     }
-    root.querySelectorAll('[data-act=today-lazy]').forEach((el) => {
+    root.querySelectorAll('[data-act=week-shop-needs]').forEach((el) => {
       el.onclick = () => {
-        state.settings.todayFlags = { lazy: true };
-        persist(state);
-        setToast('저노력 조합으로 바꿨어요.');
-      };
-    });
-    root.querySelectorAll('[data-act=today-noshop]').forEach((el) => {
-      el.onclick = () => {
-        state.settings.todayFlags = { ...(state.settings.todayFlags || {}), noShop: true };
-        persist(state);
-        setToast('재고 위주 메모를 붙였어요.');
-      };
-    });
-    root.querySelectorAll('[data-act=today-refresh]').forEach((el) => {
-      el.onclick = () => {
-        state.settings.todayFlags = { ...(state.settings.todayFlags || {}) };
-        persist(state);
-        setToast('조합을 새로 뽑았어요.');
+        const shop = buildWeekShoppingProposal(state);
+        if (!shop) {
+          setToast('장보기에 넣을 확인된 부족 재료가 없어요.');
+          return;
+        }
+        try {
+          const preview = previewProposal(state, shop);
+          pendingApproval = { proposal: shop, preview };
+          render();
+        } catch (err) {
+          setToast(err.message || '장보기 제안을 만들지 못했어요.');
+        }
       };
     });
 

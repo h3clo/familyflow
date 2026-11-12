@@ -71,6 +71,34 @@ test('unsupported op fails clearly', () => {
   );
 });
 
+test('shopping.add with null quantity stores 수량 미확인', () => {
+  const state = fresh();
+  const proposal = createProposal({
+    source: 'rules',
+    key: 'qty-null',
+    title: '간장',
+    reason: '부족 신호만',
+    ops: [
+      {
+        op: 'shopping.add',
+        payload: {
+          name: '간장',
+          quantity: null,
+          unit: '병',
+          priority: 'must',
+          category: 'food',
+        },
+      },
+    ],
+  });
+  const preview = previewProposal(state, proposal);
+  assert.equal(preview.ok, true);
+  assert.match(preview.changes.map((c) => c.text).join(' '), /수량 미확인/);
+  assert.equal(applyProposal(state, proposal).ok, true);
+  const item = ensureActiveList(state).items.find((i) => i.name === '간장');
+  assert.equal(item.quantity, null);
+});
+
 test('duplicate shopping blocked before save', () => {
   const state = fresh();
   addShoppingItem(ensureActiveList(state), {

@@ -3,13 +3,13 @@
 새 Agent는 이 파일의 **현재 시작점**과 `docs/DECISIONS.md`만으로 이어서 작업한다.  
 규칙: `AGENTS.md`. 구조 복원: `docs/ARCHITECTURE.md`. 주제 상세는 링크로만 연다.
 
-## 현재 시작점 (2026-11-11 Asia/Seoul)
+## 현재 시작점 (2026-11-12 Asia/Seoul)
 
-**방금 완료:** 가족 취향 메모 UI(#43) 배포.
+**방금 완료:** 홈 UX 간소화(#47) · 재고 밀도/등록 개선(#48–#53).
 
-**지금 작업:** 취향 메모 동기화 보강 + 주문 붙여넣기 UX(건너뛴 목록·텍스트 유지).
+**지금 작업:** #44에 main 병합 — `dinnerPending` 가드 복구 + 취향 메모 sync·주문 붙여넣기 UX 유지 (#54).
 
-**다음 행동 (한 가지):** 해당 PR 머지·배포 후 붙여넣기 실사용 피드백.
+**다음 행동 (한 가지):** REQ-F-04·관련 회귀 통과 확인 후 #44 머지 판단.
 
 작업 기준 브랜치: 평소 `main`.  
 배포: https://h3clo.github.io/familyflow/
@@ -27,6 +27,7 @@
 | `?sandbox&device=` 저장 격리 | 배포 | `src/lib/storageScope.js` |
 | 네이버페이 주문 붙여넣기 → 재고 | 배포 | #42 · `orderPaste.js` · DECISIONS §8 |
 | 가족 취향 메모 UI | 배포 | #43 · note 태그 ≤120자 |
+| 홈↔식단 오늘 일관 · 소스 재료 · 주간 장보기 | 배포 | #45+ · `inventoryMatch.js` · `mealsTodayViewModel` |
 
 ## 검증됨 vs 미검증
 

@@ -101,12 +101,22 @@ export function sortShoppingItems(items) {
 function normalizeItem(partial) {
   const name = String(partial.name || '').trim();
   if (!name) throw new Error('품목 이름이 필요해요.');
-  const quantity = Number(partial.quantity);
+  // Explicit null/'' → 수량 미확인. Omitted/invalid from manual forms still defaults to 1
+  // only when a positive number was intended; callers that know "unknown" pass null.
+  let quantity = 1;
+  if (Object.prototype.hasOwnProperty.call(partial, 'quantity')) {
+    if (partial.quantity === '' || partial.quantity == null) {
+      quantity = null;
+    } else {
+      const q = Number(partial.quantity);
+      quantity = Number.isFinite(q) && q > 0 ? q : null;
+    }
+  }
   return {
     id: uid(),
     name,
-    quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
-    unit: String(partial.unit || '개').trim() || '개',
+    quantity,
+    unit: String(partial.unit || (quantity == null ? '' : '개')).trim() || (quantity == null ? '' : '개'),
     priority: partial.priority === 'nice' ? 'nice' : 'must',
     category: resolveItemCategory(name, partial.category),
     estimatedPrice:
@@ -125,9 +135,13 @@ function normalizeItem(partial) {
 function normalizePatch(patch) {
   const out = { ...patch };
   if (out.name != null) out.name = String(out.name).trim();
-  if (out.quantity != null) {
-    const q = Number(out.quantity);
-    out.quantity = Number.isFinite(q) && q > 0 ? q : 1;
+  if (Object.prototype.hasOwnProperty.call(out, 'quantity')) {
+    if (out.quantity === '' || out.quantity == null) {
+      out.quantity = null;
+    } else {
+      const q = Number(out.quantity);
+      out.quantity = Number.isFinite(q) && q > 0 ? q : null;
+    }
   }
   if (out.priority != null) out.priority = out.priority === 'nice' ? 'nice' : 'must';
   if (out.category != null) out.category = normalizeCategory(out.category);

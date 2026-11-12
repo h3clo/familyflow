@@ -1,6 +1,7 @@
 import { uid } from '../lib/id.js';
 import { normalizeCategory } from './categories.js';
 import { inferCategory } from './quick-add.js';
+import { normalizeItemName } from './inventoryMatch.js';
 
 export const LOCATIONS = [
   { id: 'fridge', label: '냉장고' },
@@ -107,9 +108,15 @@ export function removeInventory(state, id) {
 
 /** Low/out items that are not already on the open shopping list. */
 export function shoppingSuggestionsFromInventory(state, list) {
-  const onList = new Set(list.items.filter((i) => !i.checked).map((i) => i.name));
+  const onList = new Set(
+    list.items.filter((i) => !i.checked).map((i) => normalizeItemName(i.name)),
+  );
   return state.inventory
-    .filter((x) => (x.status === 'low' || x.status === 'out') && !onList.has(x.name))
+    .filter(
+      (x) =>
+        (x.status === 'low' || x.status === 'out') &&
+        !onList.has(normalizeItemName(x.name)),
+    )
     .map((x) => ({
       name: x.name,
       quantity: x.quantity || 1,
@@ -120,6 +127,10 @@ export function shoppingSuggestionsFromInventory(state, list) {
     }));
 }
 
+/**
+ * Purchase-complete → inventory only. Always lands as 충분 unless caller
+ * passes another suggestedStatus. Does not run when merely adding to shopping.
+ */
 export function applyPurchaseToInventory(state, proposal, { accept }) {
   if (!accept) return null;
   return upsertInventory(state, {

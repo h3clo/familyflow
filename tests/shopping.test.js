@@ -22,3 +22,16 @@ test('shopping list add check budget', () => {
   assert.equal(totals.openCount, 1);
   assert.equal(totals.estimatedOpen, 7000);
 });
+
+test('shopping.add accepts quantity null as 수량 미확인', () => {
+  const list = createShoppingList({ budgetWon: 10000 });
+  addShoppingItem(list, {
+    name: '간장',
+    quantity: null,
+    unit: '병',
+    priority: 'must',
+    category: 'food',
+  });
+  assert.equal(list.items[0].quantity, null);
+  assert.equal(list.items[0].unit, '병');
+});

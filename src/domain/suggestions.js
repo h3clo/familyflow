@@ -1,5 +1,5 @@
 import { ensureActiveList } from './shopping.js';
-import { suggestToday } from './meals.js';
+import { buildWeekShoppingProposal } from './meals.js';
 import { inferCategory } from './quick-add.js';
 import {
   createProposal,
@@ -8,6 +8,7 @@ import {
   applyProposal,
   previewProposal,
 } from './proposals.js';
+import { filterSuggestionsAgainstDinnerOffer } from './suggestionFilter.js';
 
 const SNOOZE_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -97,8 +98,9 @@ export function generateSuggestions(state, now = Date.now()) {
             op: 'shopping.add',
             payload: {
               name,
-              quantity: item.quantity && item.quantity > 0 ? item.quantity : guessDefaultQty(name),
-              unit: item.unit || guessDefaultUnit(name),
+              // low/out is a buy signal only — do not invent qty or copy remaining stock.
+              quantity: null,
+              unit: item.unit || null,
               priority: must ? 'must' : 'nice',
               category: item.category || inferCategory(name),
               inventoryId: item.id,
@@ -109,45 +111,7 @@ export function generateSuggestions(state, now = Date.now()) {
     );
   }
 
-  const protein = (state.inventory || []).find(
-    (i) =>
-      (i.status === 'enough' || i.status === 'low') &&
-      /닭|돼지|소고기|두부|고기|다리살|닭다리|고등어/.test(i.name),
-  );
-  if (protein && !state.todayDinner) {
-    const pattern =
-      state.cookingPatterns.find((p) => p.method === 'steam') ||
-      state.cookingPatterns.find((p) => p.method === 'roast') ||
-      state.cookingPatterns[0];
-    const sauce =
-      (state.sauces || []).find((s) => (s.forPatterns || []).includes(pattern?.name)) ||
-      (state.sauces || [])[0];
-    raw.push(
-      createProposal({
-        source: 'rules',
-        key: `meal-protein-${protein.id}`,
-        priority: 30,
-        title: `오늘 저녁: ${pattern?.name || '요리'} · ${protein.name}`,
-        reason: `냉장고에 ‘${protein.name}’이(가) 있어요. 새로 사지 않고 활용할 수 있어요.`,
-        actionLabel: '변경 미리보기',
-        ops: [
-          {
-            op: 'meals.confirm_dinner',
-            payload: {
-              mealType: 'dinner',
-              title: `${pattern?.name || '저녁'} · ${protein.name}`,
-              protein: protein.name,
-              patternId: pattern?.id || null,
-              patternName: pattern?.name || '',
-              sauceId: sauce?.id || null,
-              sauceName: sauce?.name || '',
-              inventoryId: protein.id,
-            },
-          },
-        ],
-      }),
-    );
-  }
+  // Dinner confirm lives on the home hero only (no parallel meal-protein / meal-today cards).
 
   if (!state.mealPlan) {
     raw.push(
@@ -175,46 +139,19 @@ export function generateSuggestions(state, now = Date.now()) {
     );
   }
 
-  const listEmpty = !(list.items || []).some((i) => !i.checked);
-  const outs = (state.inventory || []).filter((i) => i.status === 'out' || i.status === 'low');
-  if (listEmpty && outs.length === 0 && (state.inventory || []).length > 0 && !state.todayDinner) {
-    const today = suggestToday(state, {});
-    const dinner = today.slots.find((s) => s.mealType === 'dinner');
-    if (dinner) {
-      raw.push(
-        createProposal({
-          source: 'rules',
-          key: 'meal-today-generic',
-          priority: 50,
-          title: `오늘 저녁 제안: ${dinner.title}`,
-          reason: dinner.sauce
-            ? `기본 패턴이에요. 소스(${dinner.sauce.name})만 바꿔도 충분해요.`
-            : '기본 조리 패턴으로 결정 피로를 줄여요.',
-          actionLabel: '변경 미리보기',
-          ops: [
-            {
-              op: 'meals.confirm_dinner',
-              payload: {
-                mealType: 'dinner',
-                title: dinner.title,
-                protein: dinner.protein,
-                patternId: dinner.pattern?.id || null,
-                patternName: dinner.pattern?.name || dinner.title,
-                sauceId: dinner.sauce?.id || null,
-                sauceName: dinner.sauce?.name || '',
-              },
-            },
-          ],
-        }),
-      );
-    }
+  const weekShop = buildWeekShoppingProposal(state);
+  if (weekShop && state.mealPlan) {
+    raw.push(weekShop);
   }
 
-  const suggestions = raw
-    .filter((s) => !isDismissed(state, s, now))
-    .filter((s) => !state.proposalsMeta?.applied?.[s.id])
-    .sort((a, b) => a.priority - b.priority || a.title.localeCompare(b.title, 'ko'))
-    .slice(0, 6);
+  const suggestions = filterSuggestionsAgainstDinnerOffer(
+    state,
+    raw
+      .filter((s) => !isDismissed(state, s, now))
+      .filter((s) => !state.proposalsMeta?.applied?.[s.id])
+      .sort((a, b) => a.priority - b.priority || a.title.localeCompare(b.title, 'ko'))
+      .slice(0, 6),
+  );
 
   return { mode: 'active', suggestions, setup: null };
 }
@@ -225,13 +162,3 @@ export function applySuggestion(state, suggestion) {
 }
 
 export { previewProposal, applyProposal };
-
-function guessDefaultQty(name) {
-  if (/휴지|화장지/.test(name)) return 30;
-  return 1;
-}
-
-function guessDefaultUnit(name) {
-  if (/휴지|화장지/.test(name)) return '롤';
-  return '개';
-}

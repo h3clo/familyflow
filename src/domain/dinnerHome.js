@@ -10,6 +10,11 @@ import {
   compareDinnerScores,
 } from './dinnerRank.js';
 import { resolveDinnerVisual, dinnerImageFile } from './dinnerVisual.js';
+import {
+  resolveSauceComponentStatuses,
+  shoppingNeedsFromStatuses,
+  proteinStatusRow,
+} from './inventoryMatch.js';
 
 const PROTEIN_RE =
   /닭다리|닭고기|닭|우삼겹|대패|목살|삼겹|돼지|소고기|연어|고등어|삼치|두부|고기|계란|달걀/;
@@ -103,16 +108,16 @@ export function buildDinnerHomeOffer(state, opts = {}) {
     },
   ];
 
-  if (pick.shopping) {
+  for (const need of pick.shoppingNeeds || []) {
     ops.push({
       op: 'shopping.add',
       payload: {
-        name: pick.shopping.name,
-        quantity: pick.shopping.quantity,
-        unit: pick.shopping.unit,
-        priority: 'must',
-        category: 'food',
-        inventoryId: pick.shopping.inventoryId || null,
+        name: need.name,
+        quantity: need.quantity,
+        unit: need.unit,
+        priority: need.priority || 'must',
+        category: need.category || 'food',
+        inventoryId: need.inventoryId || null,
         skipIfExists: true,
       },
     });
@@ -253,6 +258,23 @@ export function listDinnerCandidates(state) {
         tracked: false,
       }));
 
+  // Few tracked proteins lock every 「바꾸기」 chip to the same 곁들임 — blend in starters.
+  if (confirmed.length > 0 && confirmed.length < 3) {
+    const seen = new Set(confirmed.map((i) => normalize(i.name)));
+    for (const name of STARTER_PROTEINS) {
+      const key = normalize(name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      proteinSources.push({
+        keyId: `starter-${key}`,
+        name,
+        inventoryId: null,
+        stockStatus: 'untracked',
+        tracked: false,
+      });
+    }
+  }
+
   const candidates = [];
 
   for (const source of proteinSources) {
@@ -296,23 +318,31 @@ export function listDinnerCandidates(state) {
         if (recent) reasons.push('최근 같은 재료 · 다른 후보도 볼 수 있어요');
         else if (recentProteins.size) reasons.push('최근 식단에 안 나온 재료');
 
-        let shopping = null;
-        if (source.stockStatus === 'out' || source.stockStatus === 'low') {
-          shopping = {
-            name: source.name,
-            quantity: 1,
-            unit: guessUnit(source.name),
-            inventoryId: source.inventoryId,
-          };
-          reasons.push(
-            source.stockStatus === 'out'
-              ? `장보기 제안 · ${source.name} (없음)`
-              : `장보기 제안 · ${source.name} (부족)`,
-          );
+        const statusRows = [proteinStatusRow(source)];
+        if (sauce) {
+          const sauceRows = resolveSauceComponentStatuses(state, sauce);
+          for (const row of sauceRows) {
+            statusRows.push(row);
+            if (row.optional) continue;
+            if (row.status === 'missing') {
+              unknowns.push(`소스 재료 ‘${row.name}’ 재고 미등록`);
+            } else if (row.status === 'unknown') {
+              unknowns.push(`소스 재료 ‘${row.matchedName || row.name}’ 상태 모름`);
+            } else if (row.status === 'low') {
+              reasons.push(`소스 재료 · ${row.matchedName || row.name} 부족`);
+            } else if (row.status === 'out') {
+              reasons.push(`소스 재료 · ${row.matchedName || row.name} 없음`);
+            }
+          }
         }
 
-        if (sauce) {
-          unknowns.push(`소스(${sauce.name}) 재료 재고는 확인하지 않음`);
+        const shoppingNeeds = shoppingNeedsFromStatuses(statusRows, { guessUnit });
+        for (const need of shoppingNeeds) {
+          reasons.push(
+            need.status === 'out'
+              ? `장보기 제안 · ${need.name} (없음)`
+              : `장보기 제안 · ${need.name} (부족)`,
+          );
         }
 
         const title = formatDinnerOfferTitle({
@@ -345,7 +375,9 @@ export function listDinnerCandidates(state) {
           sauceName: sauce?.name || '',
           reasons,
           unknowns,
-          shopping,
+          shoppingNeeds,
+          /** @deprecated use shoppingNeeds[0] — kept for older tests */
+          shopping: shoppingNeeds[0] || null,
           stockStatus: source.stockStatus,
           effort,
           recent,
@@ -373,18 +405,52 @@ export function uniqueByPatternSauce(candidates) {
 /**
  * Home 「바꾸기」 list: one row per distinct hero JPG, then interleaved so
  * consecutive taps change pattern (and look) instead of five similar roasts in a row.
+ * Also spreads 곁들임 proteins so one fish/meat does not stick on every photo.
  */
 export function uniqueDinnerSwapList(state, candidates) {
-  const byPatternSauce = uniqueByPatternSauce(candidates);
+  const groups = new Map();
+  for (const c of candidates || []) {
+    const key = `${c.patternId || c.patternName || ''}|${c.sauceId || c.sauceName || ''}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  }
+  for (const rows of groups.values()) {
+    rows.sort((a, b) => {
+      if (betterPatternPairing(a, b)) return -1;
+      if (betterPatternPairing(b, a)) return 1;
+      return compareDinnerScores(a, b);
+    });
+  }
+
+  const rankedKeys = [...groups.entries()]
+    .map(([key, rows]) => ({ key, best: rows[0] }))
+    .sort((a, b) => compareDinnerScores(a.best, b.best));
+
+  const proteinUse = new Map();
   const seenFile = new Set();
   const unique = [];
-  for (const c of byPatternSauce) {
-    const file = dinnerImageFile(resolveDinnerVisual(state, c).imageSrc);
+  for (const { key } of rankedKeys) {
+    const rows = groups.get(key) || [];
+    const top = rows.slice(0, 8);
+    top.sort((a, b) => {
+      const ua = proteinUse.get(normalize(a.protein)) || 0;
+      const ub = proteinUse.get(normalize(b.protein)) || 0;
+      if (ua !== ub) return ua - ub;
+      // Keep tracked stock visible in 바꾸기 even when status is low/out.
+      const aTrack = a.stockStatus !== 'untracked' && ua === 0 ? 0 : 1;
+      const bTrack = b.stockStatus !== 'untracked' && ub === 0 ? 0 : 1;
+      if (aTrack !== bTrack) return aTrack - bTrack;
+      return compareDinnerScores(a, b);
+    });
+    const pick = top[0];
+    if (!pick) continue;
+    const file = dinnerImageFile(resolveDinnerVisual(state, pick).imageSrc);
     if (file) {
       if (seenFile.has(file)) continue;
       seenFile.add(file);
     }
-    unique.push(c);
+    proteinUse.set(normalize(pick.protein), (proteinUse.get(normalize(pick.protein)) || 0) + 1);
+    unique.push(pick);
   }
   return diversifySwapOrder(unique);
 }
