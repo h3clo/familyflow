@@ -83,12 +83,40 @@ test('family profiles map has no health/finance fields', () => {
   assert.equal('blood' in row, false);
 });
 
-test('localStateToCloudRows includes family_profiles', () => {
+test('family preference note maps and truncates to 120 chars', () => {
+  const long = `좋아함:닭,야채찜 ${'가'.repeat(200)}`;
+  const row = mapMemberToProfile(
+    {
+      id: 'm2',
+      displayName: '아빠',
+      roleLabel: '아빠',
+      note: long,
+      updatedAt: '2026-11-11T06:00:00.000Z',
+    },
+    'hh1',
+    0,
+  );
+  assert.equal(row.note.startsWith('좋아함:닭,야채찜'), true);
+  assert.equal(row.note.length, 120);
+  assert.equal(row.updated_at, '2026-11-11T06:00:00.000Z');
+});
+
+test('localStateToCloudRows includes family_profiles with notes', () => {
   const state = createEmptyState();
-  state.members = [{ id: 'p1', displayName: '아빠', roleLabel: '아빠' }];
+  state.members = [
+    {
+      id: 'p1',
+      displayName: '아빠',
+      roleLabel: '아빠',
+      note: '싫어함:돼지',
+      updatedAt: '2026-11-11T06:01:00.000Z',
+    },
+  ];
   const rows = localStateToCloudRows(state, '11111111-1111-1111-1111-111111111111');
   assert.equal(rows.familyProfiles.length, 1);
   assert.equal(rows.familyProfiles[0].display_name, '아빠');
+  assert.equal(rows.familyProfiles[0].note, '싫어함:돼지');
+  assert.equal(rows.familyProfiles[0].updated_at, '2026-11-11T06:01:00.000Z');
 });
 
 test('state migrates through v6–v10 food hub and sauce catalog', () => {
